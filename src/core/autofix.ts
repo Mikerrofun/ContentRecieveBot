@@ -1,4 +1,4 @@
-import type { CleanupResult, ValidationResult } from "@/shared/types";
+import type { CleanupResult, ValidationResult } from "@/shared/lib/types";
 import { emptyStats, runRulesById, finalNormalizationRule, type CleanupContext } from "./cleanup/rules";
 import type { CleanupOptions } from "./cleanup";
 import { validate, type ValidateOptions } from "./validate";

@@ -2,13 +2,13 @@
  * Dev-режим: long polling. Webhook удаляется, чтобы Telegram не слал
  * апдейты на прод-адрес, пока бот работает локально.
  */
-import { loadEnvForScripts } from "@/config/loadEnv";
+import { loadEnvForScripts } from "@/shared/config/loadEnv";
 
 async function main(): Promise<void> {
   loadEnvForScripts();
-  const { getEnv } = await import("@/config/env");
+  const { getEnv } = await import("@/shared/config/env");
   const { createBot } = await import("@/bot");
-  const { logger } = await import("@/shared/logger");
+  const { logger } = await import("@/shared/lib/logger");
 
   const env = getEnv();
   if (env.BOT_MODE !== "polling") {
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   await bot.api.deleteWebhook({ drop_pending_updates: true });
   await bot.api.setMyCommands([
-    { command: "StartProcess", description: "Открыть сессию приёма материала" },
+    { command: "startprocess", description: "Открыть сессию приёма материала" },
     { command: "done", description: "Обработать всё и получить результат" },
     { command: "cancel", description: "Отменить сессию" },
     { command: "status", description: "Что уже в сессии" },

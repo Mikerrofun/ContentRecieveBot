@@ -1,10 +1,9 @@
 import type { Bot } from "grammy";
 import { messages } from "@/bot/messages";
 import { CALLBACK, cancelConfirmKeyboard } from "@/bot/keyboards";
-import { clearSession, findActiveSession } from "@/services/session";
-import { enqueueTask } from "@/services/queue";
-import { finalizeSession } from "@/services/finalize";
-import { logger } from "@/shared/logger";
+import { clearSession, findActiveSession } from "@/entities/session";
+import { enqueueFinalize } from "@/bot/lib/finalize-flow";
+import { logger } from "@/shared/lib/logger";
 
 export function registerCallbacks(bot: Bot): void {
   bot.on("callback_query:data", async (ctx) => {
@@ -34,7 +33,7 @@ export function registerCallbacks(bot: Bot): void {
             break;
           }
           await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-          enqueueTask("finalize", () => finalizeSession(bot, chatId));
+          enqueueFinalize(bot, chatId);
           break;
         }
         case CALLBACK.cancel: {

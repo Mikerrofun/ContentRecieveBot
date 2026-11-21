@@ -3,13 +3,13 @@
  *   npm run set-webhook           — установить webhook
  *   npm run set-webhook -- --delete — удалить webhook (перед переходом на polling)
  */
-import { loadEnvForScripts } from "@/config/loadEnv";
+import { loadEnvForScripts } from "@/shared/config/loadEnv";
 
 async function main(): Promise<void> {
   loadEnvForScripts();
   const { Bot } = await import("grammy");
-  const { getEnv } = await import("@/config/env");
-  const { logger } = await import("@/shared/logger");
+  const { getEnv } = await import("@/shared/config/env");
+  const { logger } = await import("@/shared/lib/logger");
 
   const env = getEnv();
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);

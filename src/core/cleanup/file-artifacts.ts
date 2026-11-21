@@ -1,9 +1,7 @@
 import type { CleanupContext, Rule } from "./rules";
-import { bump, ok } from "./rules";
-import { isProtectedToken } from "./protect";
-
-const PAGE_NUMBER_RE =
-  /^[ \t]*(?:(?:[-–—[(]\s*)?\d{1,4}(?:\s*[-–—\])])?|(?:стр|page)\.?\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?|\d{1,4}\s*\/\s*\d{1,4})[ \t]*$/gim;
+import { ok } from "./rules";
+import { isProtectedToken } from "@/shared/lib/protect";
+import { PAGE_NUMBER_RE } from "@/shared/lib/text-patterns";
 
 /** B. Артефакты файлов — в основном PDF, но безопасно для любых. */
 export const fileArtifactRules: Rule[] = [
@@ -116,13 +114,3 @@ export const fileArtifactRules: Rule[] = [
     },
   },
 ];
-
-export function runFileArtifacts(text: string, ctx: CleanupContext): string {
-  let out = text;
-  for (const rule of fileArtifactRules) {
-    const res = rule.run(out, ctx);
-    bump(ctx, rule.category, rule.id, res.count);
-    out = res.text;
-  }
-  return out;
-}

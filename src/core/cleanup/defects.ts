@@ -1,7 +1,7 @@
 import type { CleanupContext, Rule } from "./rules";
-import { bump, ok } from "./rules";
-import { isProtectedToken, protectSpans } from "./protect";
-import { REPEATED_WORD_EXCEPTIONS } from "./speech-fillers";
+import { isProtectedToken, protectSpans } from "@/shared/lib/protect";
+import { HANGING_PREPOSITIONS } from "@/shared/lib/text-patterns";
+import { REPEATED_WORD_EXCEPTIONS } from "@/shared/config/speech-fillers";
 
 const CYR = "[А-Яа-яЁё]";
 const LAT = "[A-Za-z]";
@@ -14,8 +14,6 @@ const CYR_TO_LAT: Record<string, string> = {
   "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y",
   "А": "A", "Е": "E", "О": "O", "Р": "P", "С": "C", "Х": "X", "У": "Y", "Т": "T",
 };
-
-const HANGING_PREPS = ["в", "на", "с", "и", "а", "но", "по", "к", "о", "у"];
 
 interface Tokenized {
   parts: string[];
@@ -156,7 +154,7 @@ export const defectRules: Rule[] = [
         if (!cur.trim() || !next.trim()) continue;
         const words = cur.trim().split(/\s+/);
         const last = words[words.length - 1];
-        if (!HANGING_PREPS.includes(last.toLowerCase()) || isProtectedToken(last)) continue;
+        if (!HANGING_PREPOSITIONS.includes(last.toLowerCase()) || isProtectedToken(last)) continue;
         const nextTrim = next.trim();
         const firstToken = nextTrim.split(/\s+/)[0];
         // Исключения: домены, URL, e-mail, имена файлов, числа
@@ -262,15 +260,3 @@ export const defectRules: Rule[] = [
     },
   },
 ];
-
-export function runDefects(text: string, ctx: CleanupContext): string {
-  let out = text;
-  for (const rule of defectRules) {
-    const res = rule.run(out, ctx);
-    bump(ctx, rule.category, rule.id, res.count);
-    out = res.text;
-  }
-  return out;
-}
-
-export { ok };

@@ -1,7 +1,7 @@
 import type { Update } from "@grammyjs/types";
 import { getBot } from "@/bot";
-import { getEnv } from "@/config/env";
-import { enqueueTask, isDuplicateUpdate } from "@/services/queue";
+import { getEnv } from "@/shared/config/env";
+import { enqueueTask, isDuplicateUpdate } from "@/features/queue";
 
 /**
  * Приём webhook от Telegram. Проверяем секретный заголовок, дедуплицируем

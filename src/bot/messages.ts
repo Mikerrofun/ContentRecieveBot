@@ -1,5 +1,9 @@
-/** Все тексты бота (русский) — в одном месте. */
-import type { Session } from "@/shared/types";
+/**
+ * Все НЕошибочные тексты бота (русский) — в одном месте.
+ * Тексты ошибок живут в shared/lib/errors (userMessage) и дублируются
+ * обработчиками через userMessageFor.
+ */
+import type { Session } from "@/entities/session";
 
 export function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -33,6 +37,8 @@ export const messages = {
 
   noSession: () => "Сначала вызови /StartProcess",
 
+  processing: () => "Идёт обработка, подожди.",
+
   accepted: (label: string) => `Принято: ${label}. Ещё будут материалы?`,
 
   waitingMore: () => "Жду следующий материал",
@@ -53,7 +59,15 @@ export const messages = {
   status: (session: Session) => {
     const chars = session.items.reduce((n, i) => n + i.rawText.length, 0);
     const audioSec = session.items.reduce((n, i) => n + (i.meta.durationSec ?? 0), 0);
-    const parts = session.items.map((i) => `• ${i.kind === "file" ? "файл" : i.kind === "text" ? "текст" : i.kind === "voice" ? "голос" : "аудио"}: ${i.label} (${i.rawText.length} симв.)`);
+    const kindLabel: Record<Session["items"][number]["kind"], string> = {
+      file: "файл",
+      text: "текст",
+      voice: "голос",
+      audio: "аудио",
+    };
+    const parts = session.items.map(
+      (i) => `• ${kindLabel[i.kind]}: ${i.label} (${i.rawText.length} симв.)`
+    );
     return [
       `Сессия открыта, элементов: ${session.items.length}`,
       `Символов: ${chars}`,
@@ -65,21 +79,9 @@ export const messages = {
       .join("\n");
   },
 
-  unsupportedFormat: () => "Формат не поддерживается. Могу: pdf, md, txt, docx, голосовые и аудио",
-
   circleUnsupported: () => "Кружки не обрабатываю, пришли голосовое или аудиофайл",
 
   videoUnsupported: () => "Видео не обрабатываю, пришли текст, аудио или файл",
-
-  fileTooLarge: (sizeMb: number, limitMb: number) =>
-    `Файл слишком большой (${sizeMb} МБ, лимит ${limitMb})`,
-
-  audioTooLong: (minutes: number, limitMinutes: number) =>
-    `Запись длиннее ${limitMinutes} минут (${minutes} мин). Раздели её на две части и отправь снова`,
-
-  pdfNoTextLayer: () => "В PDF нет текстового слоя, сканы не поддерживаются",
-
-  emptyContent: () => "В материале не нашлось текста",
 
   transcriptionRetry: () => "Не удалось расшифровать. Повторяю…",
 

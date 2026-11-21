@@ -1,4 +1,4 @@
-import type { CleanupResult } from "@/shared/types";
+import type { CleanupResult } from "@/shared/lib/types";
 import { emptyStats, runRulesById, REGISTRY, type CleanupContext } from "./rules";
 
 export interface CleanupOptions {
@@ -9,7 +9,7 @@ export interface CleanupOptions {
 /**
  * Точка расширения для LLM-прохода (раздел 8.4 плана). По умолчанию
  * выключена; в этой итерации не реализуется. Включение флагом
- * CLEANUP_LLM=on проверяется в services/finalize и завершается ошибкой.
+ * CLEANUP_LLM=on проверяется в features/finalize и завершается ошибкой.
  */
 export const optionalLlmPass: ((text: string) => Promise<string>) | null = null;
 
