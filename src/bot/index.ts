@@ -1,0 +1,50 @@
+import { Bot, GrammyError, HttpError } from "grammy";
+import { whitelistMiddleware } from "./guards";
+import { registerCommands } from "./commands";
+import { registerTextHandler } from "./handlers/text";
+import { registerDocumentHandler } from "./handlers/document";
+import { registerVoiceHandler, registerAudioHandler } from "./handlers/audio";
+import { registerMediaUnsupportedHandler } from "./handlers/media-unsupported";
+import { registerCallbacks } from "./callbacks";
+import { getEnv } from "@/config/env";
+import { logger } from "@/shared/logger";
+
+export function createBot(token: string): Bot {
+  const bot = new Bot(token);
+
+  // Whitelist — первым middleware, до любых обработчиков
+  bot.use(whitelistMiddleware);
+
+  // Команды регистрируются раньше текстового обработчика
+  registerCommands(bot);
+  registerTextHandler(bot);
+  registerDocumentHandler(bot);
+  registerVoiceHandler(bot);
+  registerAudioHandler(bot);
+  registerMediaUnsupportedHandler(bot);
+  registerCallbacks(bot);
+
+  bot.catch((err) => {
+    // В лог — только тип ошибки и id апдейта, без содержимого сообщений
+    const ctx = err.ctx;
+    logger.error("bot handler error", {
+      updateId: ctx.update?.update_id,
+      error:
+        err.error instanceof GrammyError || err.error instanceof HttpError
+          ? err.error.message
+          : String(err.error),
+    });
+  });
+
+  return bot;
+}
+
+/** Синглтон на globalThis — переживает HMR в dev-режиме Next.js. */
+const g = globalThis as unknown as { __botInstance?: Bot };
+
+export function getBot(): Bot {
+  if (!g.__botInstance) {
+    g.__botInstance = createBot(getEnv().TELEGRAM_BOT_TOKEN);
+  }
+  return g.__botInstance;
+}

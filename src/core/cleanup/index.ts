@@ -1,0 +1,41 @@
+import type { CleanupResult } from "@/shared/types";
+import { emptyStats, runRulesById, REGISTRY, type CleanupContext } from "./rules";
+
+export interface CleanupOptions {
+  joinHardWraps: boolean;
+  maxRemovedRatio: number;
+}
+
+/**
+ * Точка расширения для LLM-прохода (раздел 8.4 плана). По умолчанию
+ * выключена; в этой итерации не реализуется. Включение флагом
+ * CLEANUP_LLM=on проверяется в services/finalize и завершается ошибкой.
+ */
+export const optionalLlmPass: ((text: string) => Promise<string>) | null = null;
+
+/**
+ * Детерминированная очистка: правила со счётчиками, без LLM.
+ * Удаляется только мусор, смысловое содержимое не трогается.
+ */
+export function runCleanup(text: string, opts: CleanupOptions): CleanupResult {
+  const ctx: CleanupContext = { stats: emptyStats(), joinHardWraps: opts.joinHardWraps };
+  let out = text;
+  for (const rule of REGISTRY) {
+    const res = rule.run(out, ctx);
+    out = res.text;
+  }
+
+  const rawLength = text.length;
+  const removedRatio = rawLength > 0 ? 1 - out.length / rawLength : 0;
+  const warnings: string[] = [];
+  if (rawLength > 0 && removedRatio > opts.maxRemovedRatio) {
+    warnings.push(
+      `удалено аномально много (${Math.round(removedRatio * 100)}% символов), проверь результат`
+    );
+  }
+
+  return { text: out, stats: ctx.stats, removedRatio, warnings };
+}
+
+export { runRulesById, REGISTRY, emptyStats };
+export type { CleanupContext, Rule, RuleResult } from "./rules";

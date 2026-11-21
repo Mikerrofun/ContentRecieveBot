@@ -1,0 +1,31 @@
+{
+  "name": "content-recieve-bot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "dev:bot": "tsx src/scripts/dev-polling.ts",
+    "set-webhook": "tsx src/scripts/set-webhook.ts",
+    "check:cleanup": "tsx src/scripts/check-cleanup.ts"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "grammy": "^1.46.0",
+    "mammoth": "^1.13.0",
+    "next": "16.4.6",
+    "p-queue": "^10.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "unpdf": "^2.2.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}
