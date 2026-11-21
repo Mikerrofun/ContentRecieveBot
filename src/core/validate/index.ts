@@ -1,4 +1,4 @@
-import type { ValidationResult } from "@/shared/types";
+import type { ValidationResult } from "@/shared/lib/types";
 import { CRITERIA, type CriterionInput } from "./criteria";
 
 export interface ValidateOptions {

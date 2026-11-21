@@ -1,34 +1,23 @@
-import type { CleanupContext, Rule } from "./rules";
-import { bump, ok } from "./rules";
+import type { Rule } from "./rules";
 import {
   ALWAYS_FILLERS,
   DELIMITED_MULTIWORD_ANYWHERE,
   DELIMITED_POSITIONAL,
   NU_CONJUNCTION_GUARD,
-} from "./speech-fillers";
-
-const LEFT_BOUND = "(?<![\\p{L}\\p{N}_])";
-const RIGHT_BOUND = "(?![\\p{L}\\p{N}_])";
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function alternation(words: string[]): string {
-  return words
-    .slice()
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRe)
-    .join("|");
-}
+} from "@/shared/config/speech-fillers";
+import {
+  WORD_LEFT_BOUND,
+  WORD_RIGHT_BOUND,
+  buildAlternation,
+} from "@/shared/lib/text-patterns";
 
 const ALWAYS_RE = new RegExp(
-  `${LEFT_BOUND}(?:${alternation(ALWAYS_FILLERS)})${RIGHT_BOUND}[ \\t]*`,
+  `${WORD_LEFT_BOUND}(?:${buildAlternation(ALWAYS_FILLERS)})${WORD_RIGHT_BOUND}[ \\t]*`,
   "giu"
 );
 
 const MULTIWORD_ANYWHERE_RE = new RegExp(
-  `${LEFT_BOUND}(?:${alternation(DELIMITED_MULTIWORD_ANYWHERE)})${RIGHT_BOUND}[ \\t]*`,
+  `${WORD_LEFT_BOUND}(?:${buildAlternation(DELIMITED_MULTIWORD_ANYWHERE)})${WORD_RIGHT_BOUND}[ \\t]*`,
   "giu"
 );
 
@@ -38,12 +27,12 @@ const NU_START_RE = new RegExp(
   "gimu"
 );
 const POSITIONAL_START_RE = new RegExp(
-  `(?<=^|\\n|[.!?…]["»)]?[ \\t])(?:${alternation(DELIMITED_POSITIONAL.filter((w) => w !== "ну"))})(?=[ \\t]*,)`,
+  `(?<=^|\\n|[.!?…]["»)]?[ \\t])(?:${buildAlternation(DELIMITED_POSITIONAL.filter((w) => w !== "ну"))})(?=[ \\t]*,)`,
   "gimu"
 );
 // «мы, типа, сделали» → «мы сделали»: паразит между запятыми — убираем
 // его вместе с одной из запятых, чтобы не оставлять висячую запятую.
-const POSITIONAL_WORDS = alternation(DELIMITED_POSITIONAL.filter((w) => w !== "ну"));
+const POSITIONAL_WORDS = buildAlternation(DELIMITED_POSITIONAL.filter((w) => w !== "ну"));
 const NU_COMMA_RES = [
   new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}[ \\t]*[,;]`, "gim"),
   new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=$)`, "gim"),
@@ -55,7 +44,7 @@ const POSITIONAL_COMMA_RES = [
   new RegExp(`[,;][ \\t]*(?:${POSITIONAL_WORDS})(?=[ \\t]*—)`, "gim"),
 ];
 const DASH_RE = new RegExp(
-  `[ \\t]—[ \\t]*(?:${alternation([...DELIMITED_POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,
+  `[ \\t]—[ \\t]*(?:${buildAlternation([...DELIMITED_POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,
   "gim"
 );
 
@@ -115,15 +104,3 @@ export const speechRules: Rule[] = [
     },
   },
 ];
-
-export function runSpeech(text: string, ctx: CleanupContext): string {
-  let out = text;
-  for (const rule of speechRules) {
-    const res = rule.run(out, ctx);
-    bump(ctx, rule.category, rule.id, res.count);
-    out = res.text;
-  }
-  return out;
-}
-
-export { ok };

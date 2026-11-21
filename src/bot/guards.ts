@@ -1,6 +1,6 @@
 import type { MiddlewareFn } from "grammy";
 import type { Context } from "grammy";
-import { getAllowedTelegramIds, getEnv } from "@/config/env";
+import { getAllowedTelegramIds, getEnv } from "@/shared/config/env";
 
 /**
  * Whitelist по Telegram ID. Посторонний, который найдёт бота, получает

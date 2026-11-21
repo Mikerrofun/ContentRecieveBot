@@ -1,9 +1,24 @@
 /**
- * Критерии «чисто» (раздел 9 плана). Модуль НЕЗАВИСИМ от правил очистки:
- * детекция написана отдельно, импортируются только словари-конфиги.
+ * Критерии «чисто» (раздел 9 плана). Логика детекции написана независимо от
+ * правил очистки; из shared импортируются только словари-конфиги и общие
+ * паттерны (иначе список исключений разъезжался бы между модулями).
  */
-import { ALWAYS_FILLERS, DELIMITED_POSITIONAL, DELIMITED_MULTIWORD_ANYWHERE, REPEATED_WORD_EXCEPTIONS } from "@/core/cleanup/speech-fillers";
-import type { Violation } from "@/shared/types";
+import {
+  ALWAYS_FILLERS,
+  DELIMITED_POSITIONAL,
+  DELIMITED_MULTIWORD_ANYWHERE,
+  REPEATED_WORD_EXCEPTIONS,
+  NU_CONJUNCTION_GUARD,
+} from "@/shared/config/speech-fillers";
+import { isProtectedToken } from "@/shared/lib/protect";
+import {
+  HANGING_PREPOSITIONS,
+  PAGE_NUMBER_RE,
+  WORD_LEFT_BOUND,
+  WORD_RIGHT_BOUND,
+  buildAlternation,
+} from "@/shared/lib/text-patterns";
+import type { Violation } from "@/shared/lib/types";
 
 export interface CriterionInput {
   text: string;
@@ -34,54 +49,34 @@ function firstMatches(text: string, re: RegExp, limit = 3): { count: number; sam
   };
 }
 
-/** Токен, который не считается смешанным словом: URL, e-mail, домен, файл. */
-function isExemptToken(token: string): boolean {
-  if (!token) return false;
-  if (token.includes("://") || token.startsWith("www.")) return true;
-  if (token.includes("@")) return true;
-  if (/\.(?:ru|рф|com|org|net|io|ai|dev|app|info|biz|online|site|me|tv|co|us|uk|de|fr|edu|gov)$/i.test(token)) return true;
-  if (/\.(?:pdf|docx?|txt|md|markdown|csv|xlsx?|pptx?|png|jpe?g|gif|zip|rar|7z|mp3|ogg|oga|wav|m4a|aac|flac)$/i.test(token)) return true;
-  return false;
-}
+const HANGING_PREPS = new Set(HANGING_PREPOSITIONS);
 
-const HANGING_PREPS = new Set(["в", "на", "с", "и", "а", "но", "по", "к", "о", "у"]);
+const LEFT_BOUND = WORD_LEFT_BOUND;
+const RIGHT_BOUND = WORD_RIGHT_BOUND;
 
-const PAGE_NUMBER_RE =
-  /^[ \t]*(?:(?:[-–—[(]\s*)?\d{1,4}(?:\s*[-–—\])])?|(?:стр|page)\.?\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?|\d{1,4}\s*\/\s*\d{1,4})[ \t]*$/gim;
-
-const LEFT_BOUND = "(?<![\\p{L}\\p{N}_])";
-const RIGHT_BOUND = "(?![\\p{L}\\p{N}_])";
-
-function esc(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function alt(words: string[]): string {
-  return words.slice().sort((a, b) => b.length - a.length).map(esc).join("|");
-}
-
-const ALWAYS_RE = new RegExp(`${LEFT_BOUND}(?:${alt(ALWAYS_FILLERS)})${RIGHT_BOUND}`, "giu");
-const MULTIWORD_RE = new RegExp(`${LEFT_BOUND}(?:${alt(DELIMITED_MULTIWORD_ANYWHERE)})${RIGHT_BOUND}`, "giu");
+const ALWAYS_RE = new RegExp(`${LEFT_BOUND}(?:${buildAlternation(ALWAYS_FILLERS)})${RIGHT_BOUND}`, "giu");
+const MULTIWORD_RE = new RegExp(`${LEFT_BOUND}(?:${buildAlternation(DELIMITED_MULTIWORD_ANYWHERE)})${RIGHT_BOUND}`, "giu");
 const POSITIONAL = DELIMITED_POSITIONAL.filter((w) => w !== "ну");
 const POSITIONAL_START_RE = new RegExp(
-  `(?<=^|\\n|[.!?…]["»)]?[ \\t])(?:${alt(POSITIONAL)})(?=[ \\t]*,)`,
+  `(?<=^|\\n|[.!?…]["»)]?[ \\t])(?:${buildAlternation(POSITIONAL)})(?=[ \\t]*,)`,
   "gimu"
 );
 const NU_START_RE = new RegExp(
-  `(?<=^|\\n|[.!?…]["»)]?[ \\t])ну(?!(?:[ \\t]*,)?[ \\t]*(?:и|а|но|же)(?![\\p{L}\\p{N}_]))(?=[ \\t]*,)`,
+  `(?<=^|\\n|[.!?…]["»)]?[ \\t])ну${NU_CONJUNCTION_GUARD}(?=[ \\t]*,)`,
   "gimu"
 );
 const POSITIONAL_COMMA_RES = [
-  new RegExp(`[,;][ \\t]*(?:${alt(POSITIONAL)})[ \\t]*[,;]`, "gim"),
-  new RegExp(`[,;][ \\t]*(?:${alt(POSITIONAL)})(?=$)`, "gim"),
-  new RegExp(`[,;][ \\t]*(?:${alt(POSITIONAL)})(?=[ \\t]*—)`, "gim"),
+  new RegExp(`[,;][ \\t]*(?:${buildAlternation(POSITIONAL)})[ \\t]*[,;]`, "gim"),
+  new RegExp(`[,;][ \\t]*(?:${buildAlternation(POSITIONAL)})(?=$)`, "gim"),
+  new RegExp(`[,;][ \\t]*(?:${buildAlternation(POSITIONAL)})(?=[ \\t]*—)`, "gim"),
 ];
 const NU_COMMA_RES = [
-  new RegExp(`[,;][ \\t]*ну(?!(?:[ \\t]*,)?[ \\t]*(?:и|а|но|же)(?![\\p{L}\\p{N}_]))[ \\t]*[,;]`, "gim"),
-  new RegExp(`[,;][ \\t]*ну(?!(?:[ \\t]*,)?[ \\t]*(?:и|а|но|же)(?![\\p{L}\\p{N}_]))(?=$)`, "gim"),
-  new RegExp(`[,;][ \\t]*ну(?!(?:[ \\t]*,)?[ \\t]*(?:и|а|но|же)(?![\\p{L}\\p{N}_]))(?=[ \\t]*—)`, "gim"),
+  new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}[ \\t]*[,;]`, "gim"),
+  new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=$)`, "gim"),
+  new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=[ \\t]*—)`, "gim"),
 ];
 const DASH_RE = new RegExp(
-  `[ \\t]—[ \\t]*(?:${alt([...POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,
+  `[ \\t]—[ \\t]*(?:${buildAlternation([...POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,
   "gim"
 );
 const REPEATED_WORD_RE = new RegExp(
@@ -151,7 +146,7 @@ export const CRITERIA: Criterion[] = [
     check: ({ text }) => {
       const tokens = text.split(/\s+/).filter(Boolean);
       const bad = tokens.filter((t) => {
-        if (isExemptToken(t)) return false;
+        if (isProtectedToken(t)) return false;
         const cyr = /[А-Яа-яЁё]/.test(t);
         const lat = /[A-Za-z]/.test(t);
         return cyr && lat;
@@ -172,9 +167,9 @@ export const CRITERIA: Criterion[] = [
         const next = lines[i + 1].trim();
         if (!cur || !next) continue;
         const last = cur.split(/\s+/).pop() ?? "";
-        if (!HANGING_PREPS.has(last.toLowerCase()) || isExemptToken(last)) continue;
+        if (!HANGING_PREPS.has(last.toLowerCase()) || isProtectedToken(last)) continue;
         const firstToken = next.split(/\s+/)[0];
-        if (isExemptToken(firstToken) || /^\d/.test(firstToken)) continue;
+        if (isProtectedToken(firstToken) || /^\d/.test(firstToken)) continue;
         found.push(sample(cur));
         if (found.length >= 3) break;
       }

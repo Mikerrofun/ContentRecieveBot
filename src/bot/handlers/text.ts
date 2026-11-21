@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import { messages } from "@/bot/messages";
-import { appendTextToLast, findActiveSession } from "@/services/session";
+import { findActiveSession } from "@/entities/session";
+import { acceptText } from "@/features/intake";
 import { scheduleAcceptPrompt } from "./prompts";
 
 export function registerTextHandler(bot: Bot): void {
@@ -9,12 +10,16 @@ export function registerTextHandler(bot: Bot): void {
     if (text.startsWith("/")) return; // команды обрабатываются раньше
 
     const session = findActiveSession(ctx.chat.id);
-    if (!session || session.status !== "collecting") {
+    if (!session) {
       await ctx.reply(messages.noSession());
       return;
     }
+    if (session.status !== "collecting") {
+      await ctx.reply(messages.processing());
+      return;
+    }
 
-    appendTextToLast(session, text);
+    acceptText(session, text);
     scheduleAcceptPrompt(bot, session);
   });
 }

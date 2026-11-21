@@ -6,8 +6,8 @@ import { registerDocumentHandler } from "./handlers/document";
 import { registerVoiceHandler, registerAudioHandler } from "./handlers/audio";
 import { registerMediaUnsupportedHandler } from "./handlers/media-unsupported";
 import { registerCallbacks } from "./callbacks";
-import { getEnv } from "@/config/env";
-import { logger } from "@/shared/logger";
+import { getEnv } from "@/shared/config/env";
+import { logger } from "@/shared/lib/logger";
 
 export function createBot(token: string): Bot {
   const bot = new Bot(token);

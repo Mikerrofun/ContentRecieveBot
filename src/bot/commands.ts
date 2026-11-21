@@ -1,13 +1,8 @@
 import type { Bot } from "grammy";
 import { messages } from "@/bot/messages";
 import { cancelConfirmKeyboard } from "@/bot/keyboards";
-import {
-  clearSession,
-  createSession,
-  findActiveSession,
-} from "@/services/session";
-import { enqueueTask } from "@/services/queue";
-import { finalizeSession } from "@/services/finalize";
+import { clearSession, createSession, findActiveSession } from "@/entities/session";
+import { enqueueFinalize } from "@/bot/lib/finalize-flow";
 
 export function registerCommands(bot: Bot): void {
   bot.command(["start", "help"], (ctx) => ctx.reply(messages.help()));
@@ -28,7 +23,7 @@ export function registerCommands(bot: Bot): void {
       void ctx.reply(messages.nothingToLoad());
       return;
     }
-    enqueueTask("finalize", () => finalizeSession(bot, ctx.chat.id));
+    enqueueFinalize(bot, ctx.chat.id);
   });
 
   bot.command("cancel", (ctx) => {

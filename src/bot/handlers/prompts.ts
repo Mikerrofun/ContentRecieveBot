@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import type { Session } from "@/shared/types";
+import type { Session } from "@/entities/session";
 import { messages } from "@/bot/messages";
 import { acceptKeyboard } from "@/bot/keyboards";
 

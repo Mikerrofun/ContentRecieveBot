@@ -1,4 +1,4 @@
-import type { CleanupCategory, CleanupStats } from "@/shared/types";
+import type { CleanupCategory, CleanupStats } from "@/shared/lib/types";
 import { mechanicalRules, finalNormalizationRule } from "./mechanical";
 import { fileArtifactRules } from "./file-artifacts";
 import { defectRules } from "./defects";

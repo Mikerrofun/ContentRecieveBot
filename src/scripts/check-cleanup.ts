@@ -3,7 +3,7 @@
  * очистка → автопочинка → валидатор должен дать ok. Плюс проверки
  * сохранности доменов/URL/e-mail/чисел и идемпотентности.
  */
-import { loadEnvForScripts } from "@/config/loadEnv";
+import { loadEnvForScripts } from "@/shared/config/loadEnv";
 
 const DIRTY_SAMPLE = [
   "\uFEFFЗаголовок отчёта<br><u>черновик</u>",

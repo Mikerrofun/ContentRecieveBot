@@ -1,18 +1,19 @@
 import type { Bot, Context } from "grammy";
-import { getEnv } from "@/config/env";
+import { getEnv } from "@/shared/config/env";
+import { AudioTooLongError, FileTooLargeError, TranscriptionError } from "@/shared/lib/errors";
 import { messages, formatDuration } from "@/bot/messages";
-import { addItem, findActiveSession } from "@/services/session";
-import type { Session } from "@/shared/types";
-import { transcribeAudio } from "@/ai/whisper";
-import { TranscriptionError } from "@/shared/errors";
-import { downloadTelegramFile } from "./download";
+import { findActiveSession, type Session } from "@/entities/session";
+import { acceptAudio } from "@/features/intake";
+import { downloadTelegramFile } from "@/bot/lib/download";
+import { userMessageFor } from "@/bot/lib/reply";
 import { flushPendingTextPrompt, sendAcceptPrompt } from "./prompts";
-import { userMessageFor } from "./errors";
 
 export interface AudioInput {
   kind: "voice" | "audio";
   fileId: string;
   durationSec?: number;
+  /** file_size из метаданных Telegram, если известен. */
+  fileSize?: number;
   fileName: string;
   mime: string;
   label: string;
@@ -26,30 +27,31 @@ export async function processAudio(
   input: AudioInput
 ): Promise<void> {
   const env = getEnv();
-  const minutes = (input.durationSec ?? 0) / 60;
+
   // Длительность известна до скачивания — проверяем сразу
   if (input.durationSec && input.durationSec > env.MAX_AUDIO_MINUTES * 60) {
-    await ctx.reply(messages.audioTooLong(minutes, env.MAX_AUDIO_MINUTES));
+    const minutes = Math.round((input.durationSec / 60) * 10) / 10;
+    await ctx.reply(userMessageFor(new AudioTooLongError(minutes, env.MAX_AUDIO_MINUTES)));
+    return;
+  }
+
+  // Размер файла тоже известен до скачивания
+  if (input.fileSize && input.fileSize > env.MAX_FILE_MB * 1024 * 1024) {
+    const sizeMb = Math.round((input.fileSize / (1024 * 1024)) * 10) / 10;
+    await ctx.reply(userMessageFor(new FileTooLargeError(sizeMb, env.MAX_FILE_MB)));
     return;
   }
 
   try {
     const file = await ctx.api.getFile(input.fileId);
     const buffer = await downloadTelegramFile(env.TELEGRAM_BOT_TOKEN, file.file_path ?? "");
-    const { text, provider, model } = await transcribeAudio({
+    await acceptAudio(session, {
       buffer,
-      filename: input.fileName,
+      fileName: input.fileName,
       mime: input.mime,
-      onAttemptFail: async () => {
-        await ctx.reply(messages.transcriptionRetry());
-      },
-    });
-    addItem(session, {
-      id: crypto.randomUUID(),
       kind: input.kind,
+      durationSec: input.durationSec,
       label: input.label,
-      rawText: text,
-      meta: { durationSec: input.durationSec, source: input.kind, provider, model },
     });
     await sendAcceptPrompt(bot, session);
   } catch (e) {
@@ -65,8 +67,12 @@ export function registerVoiceHandler(bot: Bot): void {
   bot.on("message:voice", async (ctx) => {
     const voice = ctx.message.voice;
     const session = findActiveSession(ctx.chat.id);
-    if (!session || session.status !== "collecting") {
+    if (!session) {
       await ctx.reply(messages.noSession());
+      return;
+    }
+    if (session.status !== "collecting") {
+      await ctx.reply(messages.processing());
       return;
     }
     await flushPendingTextPrompt(bot, session);
@@ -74,6 +80,7 @@ export function registerVoiceHandler(bot: Bot): void {
       kind: "voice",
       fileId: voice.file_id,
       durationSec: voice.duration,
+      fileSize: voice.file_size,
       fileName: `voice-${ctx.message.message_id}.oga`,
       mime: "audio/ogg",
       label: `голосовое ${formatDuration(voice.duration)}`,
@@ -85,8 +92,12 @@ export function registerAudioHandler(bot: Bot): void {
   bot.on("message:audio", async (ctx) => {
     const audio = ctx.message.audio;
     const session = findActiveSession(ctx.chat.id);
-    if (!session || session.status !== "collecting") {
+    if (!session) {
       await ctx.reply(messages.noSession());
+      return;
+    }
+    if (session.status !== "collecting") {
+      await ctx.reply(messages.processing());
       return;
     }
     await flushPendingTextPrompt(bot, session);
@@ -94,6 +105,7 @@ export function registerAudioHandler(bot: Bot): void {
       kind: "audio",
       fileId: audio.file_id,
       durationSec: audio.duration,
+      fileSize: audio.file_size,
       fileName: audio.file_name ?? `audio-${ctx.message.message_id}.mp3`,
       mime: audio.mime_type ?? "audio/mpeg",
       label: audio.file_name ?? `аудио ${formatDuration(audio.duration)}`,
