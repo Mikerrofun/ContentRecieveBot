@@ -3,29 +3,16 @@ import { TranscriptionError, isAppError } from "@/shared/lib/errors";
 import { logger } from "@/shared/lib/logger";
 import { buildWhisperPrompt } from "./prompt";
 import { createGroqProvider } from "./providers/groq";
-import { createOpenAIProvider } from "./providers/openai";
 import { createLocalProvider } from "./providers/local";
+import type { TranscriptionProvider } from "./types";
 
-export type ProviderName = "groq" | "openai" | "local";
-
-export interface TranscriptionProvider {
-  name: ProviderName;
-  transcribe(input: {
-    buffer: Buffer;
-    filename: string;
-    mime: string;
-    language: "ru";
-    prompt?: string;
-  }): Promise<{ text: string; durationSec?: number; model: string }>;
-}
+export type { ProviderName, TranscribeInput, TranscribeOutput, TranscriptionProvider } from "./types";
 
 export function getTranscriptionProvider(): TranscriptionProvider {
   const env = getEnv();
   switch (env.WHISPER_PROVIDER) {
     case "groq":
       return createGroqProvider();
-    case "openai":
-      return createOpenAIProvider();
     case "local":
       return createLocalProvider();
   }

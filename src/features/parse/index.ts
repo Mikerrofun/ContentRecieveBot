@@ -1,14 +1,10 @@
-import type { FileSource } from "@/shared/lib/types";
 import { UnsupportedFormatError } from "@/shared/lib/errors";
 import { extractPdfText } from "./pdf";
 import { extractDocxText } from "./docx";
 import { extractPlainText } from "./text";
+import type { ExtractInput, ExtractResult } from "./types";
 
-export interface ExtractInput {
-  buffer: Buffer;
-  fileName?: string;
-  mime?: string;
-}
+export type { ExtractInput, ExtractResult } from "./types";
 
 function extensionOf(input: ExtractInput): string {
   const fromName = input.fileName?.split(".").pop()?.toLowerCase() ?? "";
@@ -19,11 +15,6 @@ function extensionOf(input: ExtractInput): string {
   if (mime.includes("plain")) return "txt";
   if (mime.includes("markdown")) return "md";
   return "";
-}
-
-export interface ExtractResult {
-  text: string;
-  source: FileSource;
 }
 
 /** Точка входа парсера: buffer + mime/ext → текстовый слой. */

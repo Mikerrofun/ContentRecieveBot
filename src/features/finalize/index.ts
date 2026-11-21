@@ -13,6 +13,9 @@ import {
 import type { OutputSink } from "@/features/sink";
 import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { logger } from "@/shared/lib/logger";
+import type { FinalizeHooks, FinalizeOutcome } from "./types";
+
+export type { FinalizeHooks, FinalizeOutcome } from "./types";
 
 function addStats(target: CleanupStats, source: CleanupStats): void {
   for (const category of Object.keys(source) as (keyof CleanupStats)[]) {
@@ -26,18 +29,6 @@ function joinHardWrapsFor(env: ReturnType<typeof getEnv>, source?: string): bool
   if (env.JOIN_HARD_WRAPS === "all") return true;
   if (env.JOIN_HARD_WRAPS === "off") return false;
   return source === "pdf"; // режим "pdf" — только для PDF
-}
-
-/** Итог финализации — презентация решает, что показать пользователю. */
-export type FinalizeOutcome = "done" | "empty" | "busy" | "llm-not-implemented" | "failed";
-
-/**
- * Хуки для сообщений пользователю. Слой features не знает про Telegram
- * и тексты бота — их подставляет слой bot.
- */
-export interface FinalizeHooks {
-  onStarted?: () => Promise<unknown>;
-  onFailed?: () => Promise<unknown>;
 }
 
 /**

@@ -1,6 +1,9 @@
 import { addItem, appendTextToLast, type Session, type SessionItem } from "@/entities/session";
 import { extractText } from "@/features/parse";
 import { transcribeAudio } from "@/features/transcribe";
+import type { AudioInput, FileInput } from "./types";
+
+export type { AudioInput, FileInput } from "./types";
 
 /**
  * Приём материала в сессию (план 6.3): каждый материал сразу превращается
@@ -17,12 +20,6 @@ export function acceptText(session: Session, text: string): void {
     rawText: text,
     meta: { source: "text" },
   });
-}
-
-export interface FileInput {
-  buffer: Buffer;
-  fileName?: string;
-  mime?: string;
 }
 
 /**
@@ -59,15 +56,6 @@ export async function acceptFile(
   };
   addItem(session, item);
   return item;
-}
-
-export interface AudioInput {
-  buffer: Buffer;
-  fileName: string;
-  mime: string;
-  kind: "voice" | "audio";
-  durationSec?: number;
-  label: string;
 }
 
 /** Голос/аудио → Whisper → элемент сессии. */

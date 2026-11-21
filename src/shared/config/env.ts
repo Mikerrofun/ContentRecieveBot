@@ -14,12 +14,10 @@ const envSchema = z.object({
   WEBHOOK_PATH: z.string().default("/api/telegram/webhook"),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  // --- Whisper ---
-  WHISPER_PROVIDER: z.enum(["groq", "openai", "local"]).default("groq"),
+  // --- Whisper (только Groq Cloud) ---
+  WHISPER_PROVIDER: z.enum(["groq", "local"]).default("groq"),
   GROQ_API_KEY: z.string().default(""),
   GROQ_WHISPER_MODEL: z.string().default("whisper-large-v3"),
-  OPENAI_API_KEY: z.string().default(""),
-  OPENAI_WHISPER_MODEL: z.string().default("whisper-1"),
   WHISPER_PROMPT_TERMS: z.string().default(""),
 
   // --- Лимиты ---
@@ -62,9 +60,6 @@ export function getEnv(): Env {
   }
   if (env.WHISPER_PROVIDER === "groq" && !env.GROQ_API_KEY) {
     problems.push("GROQ_API_KEY обязателен при WHISPER_PROVIDER=groq");
-  }
-  if (env.WHISPER_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
-    problems.push("OPENAI_API_KEY обязателен при WHISPER_PROVIDER=openai");
   }
 
   if (problems.length > 0) {

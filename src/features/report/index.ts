@@ -1,29 +1,7 @@
-import type { CleanupStats, ValidationResult } from "@/shared/lib/types";
-import type { SessionItem } from "@/entities/session";
+import type { CleanupStats } from "@/shared/lib/types";
+import type { AudioMeta, FinalizeItemResult, ReportInput, ReportSection } from "./types";
 
-/** DTO финализации — общий для features/finalize и features/report. */
-export interface FinalizeItemResult {
-  item: SessionItem;
-  cleanedText: string;
-  charsBefore: number;
-  charsAfter: number;
-  stats: CleanupStats;
-  autofixPasses: number;
-  validation: ValidationResult;
-  warnings: string[];
-}
-
-export interface AudioMeta {
-  count: number;
-  totalDurationSec: number;
-  provider?: string;
-  model?: string;
-}
-
-export interface ReportSection {
-  title?: string;
-  body: string;
-}
+export type { AudioMeta, FinalizeItemResult, ReportInput, ReportSection } from "./types";
 
 const CATEGORY_LABELS: Record<keyof CleanupStats, string> = {
   mechanical: "Механика (теги, пробелы, пустые строки)",
@@ -53,14 +31,6 @@ function mergeStats(list: CleanupStats[]): CleanupStats {
     }
   }
   return out;
-}
-
-export interface ReportInput {
-  createdAt: number;
-  items: FinalizeItemResult[];
-  combinedText: string;
-  validation: ValidationResult;
-  audio: AudioMeta;
 }
 
 /** Отчёт по разделу 11 плана: секции, склеиваемые в сообщения ≤ 4096 символов. */

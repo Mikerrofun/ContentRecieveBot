@@ -1,5 +1,5 @@
-import { transcribeViaOpenAICompatible, type TranscribeInput, type TranscribeOutput } from "../openai-compatible";
-import type { TranscriptionProvider } from "../index";
+import { transcribeViaOpenAICompatible } from "../openai-compatible";
+import type { TranscribeInput, TranscribeOutput, TranscriptionProvider } from "../types";
 import { getEnv } from "@/shared/config/env";
 
 /** Groq Cloud — Whisper-совместимый API (https://api.groq.com/openai/v1). */

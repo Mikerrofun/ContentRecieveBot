@@ -1,27 +1,14 @@
 import { TranscriptionError } from "@/shared/lib/errors";
+import type { TranscribeInput, TranscribeOutput } from "./types";
 
 /**
- * Groq и OpenAI используют OpenAI-совместимый эндпоинт расшифровки —
- * один клиент с разным baseURL/ключом/моделью.
+ * Groq Cloud использует OpenAI-совместимый эндпоинт расшифровки —
+ * один клиент настраивается baseURL/ключом/моделью.
  */
 export interface OpenAICompatibleConfig {
-  name: "groq" | "openai";
+  name: "groq";
   baseURL: string;
   apiKey: string;
-  model: string;
-}
-
-export interface TranscribeInput {
-  buffer: Buffer;
-  filename: string;
-  mime: string;
-  language: "ru";
-  prompt?: string;
-}
-
-export interface TranscribeOutput {
-  text: string;
-  durationSec?: number;
   model: string;
 }
 

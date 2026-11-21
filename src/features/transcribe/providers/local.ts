@@ -1,5 +1,5 @@
 import { TranscriptionError } from "@/shared/lib/errors";
-import type { TranscriptionProvider } from "../index";
+import type { TranscriptionProvider } from "../types";
 
 /** Заглушка: локально модели на сервере не запускаем. */
 export function createLocalProvider(): TranscriptionProvider {
