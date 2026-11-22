@@ -8,7 +8,6 @@ const envSchema = z.object({
   // --- Telegram ---
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN обязателен"),
   TELEGRAM_WEBHOOK_SECRET: z.string().default(""),
-  ALLOWED_TELEGRAM_IDS: z.string().default(""),
   BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
   PUBLIC_BASE_URL: z.string().default(""),
   WEBHOOK_PATH: z.string().default("/api/telegram/webhook"),
@@ -68,15 +67,4 @@ export function getEnv(): Env {
 
   cached = env;
   return env;
-}
-
-/** Список разрешённых Telegram ID; пустой список = бот никому не отвечает. */
-export function getAllowedTelegramIds(env: Env): Set<number> {
-  return new Set(
-    env.ALLOWED_TELEGRAM_IDS.split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((s) => Number(s))
-      .filter((n) => Number.isInteger(n) && n > 0)
-  );
 }

@@ -62,7 +62,7 @@ const POSITIONAL_START_RE = new RegExp(
   "gimu"
 );
 const NU_START_RE = new RegExp(
-  `(?<=^|\\n|[.!?…]["»)]?[ \\t])ну${NU_CONJUNCTION_GUARD}(?=[ \\t]*,)`,
+  `(?<=^|\\n|[.!?…]["»)]?[ \\t])ну${NU_CONJUNCTION_GUARD}[ \\t]*,?[ \\t]*(?=[A-Za-zА-Яа-яЁё]|$)`,
   "gimu"
 );
 const POSITIONAL_COMMA_RES = [
@@ -79,15 +79,37 @@ const DASH_RE = new RegExp(
   `[ \\t]—[ \\t]*(?:${buildAlternation([...POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,
   "gim"
 );
+// «...1000 знаков, да» → «...1000 знаков»: «да»-тег в конце фразы
+const TRAILING_DA_RE = /,[ \t]*да(?=[ \t]*(?:$|[.!?…]))/gim;
+// «символов, да, именно» → «символов, именно»: «да» между запятыми
+const PAREN_DA_RE = /,[ \t]*да(?=[ \t]*,)/g;
 const REPEATED_WORD_RE = new RegExp(
-  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]+)((?:[ \\t]+\\1${RIGHT_BOUND})+)`,
+  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]+)((?:[ \\t]+|[ \\t]*,[ \\t]*(?:(?:да|ну|типа|короче|блин)[ \\t]*,[ \\t]*)?)\\1${RIGHT_BOUND})+`,
   "giu"
 );
+const HYPHEN_DUP_RE = /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)-\1(?![\p{L}\p{N}_])/giu;
 const STUTTER_RE = new RegExp(
-  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]{1,5})(?:-\\1)+-`,
+  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]{2,5})(?:-\\1)+-`,
   "giu"
 );
 const HANGING_FRAGMENT_RE = /(?<![\p{L}\p{N}_])[A-Za-zА-Яа-яЁё]{1,3}-[ \t]*$/gmu;
+
+// Ложные старты и растяжки; без флага i — строчные классы защищают термины.
+const CANCEL_WORDS = "(?:[нН]ет|[нН]е|[тТ]очнее|[вВ]ернее|[тТ]о[ \\t][еЕ]сть)";
+const SENT_START = "(?<=^|\\n|[.!?…][\"»)]?[ \\t])";
+const FALSE_START_DASH_RE = new RegExp(
+  `${SENT_START}[а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2}[ \\t]*[—–][ \\t]*${CANCEL_WORDS}[ \\t]*,`,
+  "gm"
+);
+const FALSE_START_COMMA_RE = new RegExp(
+  `${SENT_START}[а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2}[ \\t]*,[ \\t]*${CANCEL_WORDS}[ \\t]*,`,
+  "gm"
+);
+const FALSE_START_FRAGMENT_RE = /(?<![\p{L}\p{N}_])[а-яёa-z]{2,}[—–][ \t]+(?=[а-яёa-z])/gu;
+const ELONGATED_HYPHEN_RE = /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)-([A-Za-zА-Яа-яЁё])(?:-\2)+(?![\p{L}\p{N}_])/gu;
+const WORD_TOKEN_RE = /(?<![\p{L}\p{N}_])[A-Za-zА-Яа-яЁё]+(?![\p{L}\p{N}_])/gu;
+const LETTER_RUN_RE = /([A-Za-zА-Яа-яЁё])\1{2,}/u;
+const ALWAYS_SET = new Set(ALWAYS_FILLERS.map((w) => w.toLowerCase()));
 
 export const CRITERIA: Criterion[] = [
   {
@@ -203,7 +225,16 @@ export const CRITERIA: Criterion[] = [
     severity: "error",
     fixable: true,
     check: ({ text }) => {
-      const passes = [POSITIONAL_START_RE, NU_START_RE, ...POSITIONAL_COMMA_RES, ...NU_COMMA_RES, DASH_RE, MULTIWORD_RE];
+      const passes = [
+        POSITIONAL_START_RE,
+        NU_START_RE,
+        ...POSITIONAL_COMMA_RES,
+        ...NU_COMMA_RES,
+        DASH_RE,
+        MULTIWORD_RE,
+        TRAILING_DA_RE,
+        PAREN_DA_RE,
+      ];
       let count = 0;
       const samples: string[] = [];
       for (const re of passes) {
@@ -223,9 +254,14 @@ export const CRITERIA: Criterion[] = [
     check: ({ text }) => {
       let count = 0;
       const samples: string[] = [];
+      for (const m of text.matchAll(HYPHEN_DUP_RE)) {
+        if (REPEATED_WORD_EXCEPTIONS.includes(m[1].toLowerCase())) continue;
+        count++;
+        if (samples.length < 3) samples.push(sample(m[0]));
+      }
       for (const m of text.matchAll(REPEATED_WORD_RE)) {
         if (REPEATED_WORD_EXCEPTIONS.includes(m[1].toLowerCase())) continue;
-        count += m[2].trim().split(/[ \t]+/).length;
+        count += m[0].toLowerCase().split(m[1].toLowerCase()).length - 2;
         if (samples.length < 3) samples.push(sample(m[0]));
       }
       if (count === 0) return null;
@@ -292,6 +328,73 @@ export const CRITERIA: Criterion[] = [
         count: 1,
         samples: [`удалено ${Math.round(removedRatio * 100)}% символов (лимит ${Math.round(maxRemovedRatio * 100)}%)`],
       };
+    },
+  },
+  {
+    id: "V19",
+    severity: "error",
+    fixable: true,
+    check: ({ text }) => {
+      let count = 0;
+      const samples: string[] = [];
+      for (const re of [FALSE_START_DASH_RE, FALSE_START_COMMA_RE, FALSE_START_FRAGMENT_RE]) {
+        for (const m of text.matchAll(re)) {
+          count++;
+          if (samples.length < 3) samples.push(sample(m[0]));
+        }
+      }
+      if (count === 0) return null;
+      return { count, samples };
+    },
+  },
+  {
+    id: "V20",
+    severity: "error",
+    fixable: true,
+    check: ({ text }) => {
+      let count = 0;
+      const samples: string[] = [];
+      for (const m of text.matchAll(ELONGATED_HYPHEN_RE)) {
+        if (ALWAYS_SET.has(m[0].toLowerCase())) continue;
+        const [, word, letter] = m;
+        if (word.slice(-1).toLowerCase() !== letter.toLowerCase()) continue;
+        count++;
+        if (samples.length < 3) samples.push(sample(m[0]));
+      }
+      for (const m of text.matchAll(WORD_TOKEN_RE)) {
+        if (ALWAYS_SET.has(m[0].toLowerCase())) continue;
+        if (m[0] === m[0].toUpperCase() && m[0].length > 1) continue;
+        if (!LETTER_RUN_RE.test(m[0])) continue;
+        count++;
+        if (samples.length < 3) samples.push(sample(m[0]));
+      }
+      if (count === 0) return null;
+      return { count, samples };
+    },
+  },
+  {
+    id: "V22",
+    severity: "error",
+    fixable: true,
+    check: ({ text }) => {
+      let count = 0;
+      const samples: string[] = [];
+      const push = (m: string) => {
+        count++;
+        if (samples.length < 3) samples.push(sample(m));
+      };
+      // Мусор в начале текста: «...,», «,…»
+      if (/^[ \t]*(?:(?:\.{3}|…|,)[ \t]*)+/.test(text)) push(text.slice(0, 20));
+      for (const m of text.matchAll(/[—–][ \t]*,(?:[ \t]*,)*/g)) push(m[0]);
+      for (const m of text.matchAll(/(\.{3}|…)[ \t]*,(?:[ \t]*,)*/g)) push(m[0]);
+      for (const m of text.matchAll(/(\.{3}|…)(?:[ \t]*(?:\.{3}|…))+/g)) push(m[0]);
+      // Многоточие внутри предложения там, где нужна запятая
+      for (const m of text.matchAll(
+        /(?<=[A-Za-zА-Яа-яЁё])[ \t]*,?[ \t]*(?:\.{3}|…)(?=[ \t]+[A-Za-zА-Яа-яЁё])/gu
+      ))
+        push(m[0]);
+      if (count === 0) return null;
+      return { count, samples };
     },
   },
 ];

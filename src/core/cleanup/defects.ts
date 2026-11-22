@@ -6,6 +6,11 @@ import { REPEATED_WORD_EXCEPTIONS } from "@/shared/config/speech-fillers";
 const CYR = "[А-Яа-яЁё]";
 const LAT = "[A-Za-z]";
 
+// Слова отмены для ложных стартов; без флага i, чтобы строчные классы
+// [а-яёa-z] не матчили заглавные (защита терминов и имён собственных).
+const CANCEL_WORDS = "(?:[нН]ет|[нН]е|[тТ]очнее|[вВ]ернее|[тТ]о[ \\t][еЕ]сть)";
+const SENT_START = "(?<=^|\\n|[.!?…][\"»)]?[ \\t])";
+
 const LAT_TO_CYR: Record<string, string> = {
   a: "а", e: "е", o: "о", p: "р", c: "с", x: "х", y: "у",
   A: "А", E: "Е", O: "О", P: "Р", C: "С", X: "Х", Y: "У", T: "Т",
@@ -111,13 +116,66 @@ export const defectRules: Rule[] = [
     },
   },
   {
+    id: "d-false-start-dash",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «я хотел — нет, я думаю» → «я думаю»; обрывок только со строчной
+      const out = t.replace(
+        new RegExp(
+          `${SENT_START}([а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2})[ \\t]*[—–][ \\t]*${CANCEL_WORDS}[ \\t]*,[ \\t]*`,
+          "gm"
+        ),
+        () => {
+          count++;
+          return "";
+        }
+      );
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-false-start-comma",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «в среду, нет, в четверг» → «в четверг»; обрывок только со строчной
+      const out = t.replace(
+        new RegExp(
+          `${SENT_START}([а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2})[ \\t]*,[ \\t]*${CANCEL_WORDS}[ \\t]*,[ \\t]*`,
+          "gm"
+        ),
+        () => {
+          count++;
+          return "";
+        }
+      );
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-false-start-fragment",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «он был в чёр— в синей» → «он был в синей»; только строчные обрывки
+      // (термины вида «JavaScript— TypeScript» защищены регистром)
+      const out = t.replace(/(?<![\p{L}\p{N}_])[а-яёa-z]{2,}[—–][ \t]+/gu, () => {
+        count++;
+        return "";
+      });
+      return { text: out, count };
+    },
+  },
+  {
     id: "d-stutter",
     category: "defects",
     run: (t) => {
       let count = 0;
-      // «по-по-посмотрим» → «посмотрим»
+      // «по-по-посмотрим» → «посмотрим»; от 2 букв, чтобы не съедать
+      // дефисные филлеры вида «э-э-э» (их убирает s-fillers-always)
       const out = t.replace(
-        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]{1,5})(?:-\1)+-(?=[A-Za-zА-Яа-яЁё])/giu,
+        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]{2,5})(?:-\1)+-(?=[A-Za-zА-Яа-яЁё])/giu,
         () => {
           count++;
           return "";
@@ -131,14 +189,72 @@ export const defectRules: Rule[] = [
     category: "defects",
     run: (t) => {
       let count = 0;
-      const out = t.replace(
-        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)((?:[ \t]+\1(?![\p{L}\p{N}_]))+)(?![\p{L}\p{N}_])/giu,
-        (m, word: string, reps: string) => {
+      // «да-да», «вкусного-вкусного» → одно слово; чуть-чуть, еле-еле не трогаем
+      let out = t.replace(
+        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)-\1(?![\p{L}\p{N}_])/giu,
+        (m, word: string) => {
           if (REPEATED_WORD_EXCEPTIONS.includes(word.toLowerCase())) return m;
-          count += reps.trim().split(/[ \t]+/).length;
+          count++;
           return word;
         }
       );
+      // «в в», «забыл, да, забыл» → одно слово
+      const sep = "(?:[ \\t]+|[ \\t]*,[ \\t]*(?:(?:да|ну|типа|короче|блин)[ \\t]*,[ \\t]*)?)";
+      const re = new RegExp(
+        `(?<![\\p{L}\\p{N}_])([A-Za-zА-Яа-яЁё]+)(?:${sep}\\1(?![\\p{L}\\p{N}_]))+`,
+        "giu"
+      );
+      out = out.replace(re, (m, word: string) => {
+        if (REPEATED_WORD_EXCEPTIONS.includes(word.toLowerCase())) return m;
+        count += m.toLowerCase().split(word.toLowerCase()).length - 2;
+        return word;
+      });
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-ellipsis",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      let out = t;
+      // Мусор в начале текста: «...,», «,…»
+      out = out.replace(/^[ \t]*(?:(?:\.{3}|…|,)[ \t]*)+/, () => {
+        count++;
+        return "";
+      });
+      // «—,» → «—», «…,» → «…»
+      out = out.replace(/([—–])[ \t]*,(?:[ \t]*,)*/g, (_m, d: string) => {
+        count++;
+        return d;
+      });
+      out = out.replace(/(\.{3}|…)[ \t]*,(?:[ \t]*,)*/g, (_m, e: string) => {
+        count++;
+        return e;
+      });
+      // Несколько многоточий подряд → одно
+      out = out.replace(/(\.{3}|…)(?:[ \t]*(?:\.{3}|…))+/g, (_m, e: string) => {
+        count++;
+        return e;
+      });
+      // Многоточие внутри предложения → запятая; слово-повтор после него удаляется
+      for (let i = 0; i < 3; i++) {
+        const before = out;
+        out = out.replace(
+          /([A-Za-zА-Яа-яЁё]+)(?:[ \t]*,[ \t]*)?[ \t]*(?:\.{3}|…)[ \t]+([A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*)/gu,
+          (m, prev: string, next: string, offset: number, s: string) => {
+            const cut = s.slice(0, offset);
+            const lineBefore = cut.slice(cut.lastIndexOf("\n") + 1).trimEnd();
+            if (!/[A-Za-zА-Яа-яЁё]$/.test(lineBefore)) return m;
+            const recent = (lineBefore + " " + prev).toLowerCase().match(/[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*/g) ?? [];
+            const recentSet = new Set(recent.slice(-3));
+            count++;
+            if (next.toLowerCase().split("-").some((p) => recentSet.has(p))) return prev + ",";
+            return prev + ", " + next.toLowerCase();
+          }
+        );
+        if (out === before) break;
+      }
       return { text: out, count };
     },
   },

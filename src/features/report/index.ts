@@ -34,6 +34,7 @@ const RULE_LABELS: Record<string, string> = {
   "d-punct-space": "Пробелы вокруг пунктуации",
   "d-repeated-punct": "Повторяющаяся пунктуация",
   "d-repeated-words": "Повторы слов",
+  "d-ellipsis": "Многоточия и мусорные знаки (…, —,)",
   "d-stutter": "Заикание",
   "d-homoglyphs": "Похожие символы (гомоглифы)",
   "d-empty-markers": "Пустые маркеры списков",
@@ -43,6 +44,10 @@ const RULE_LABELS: Record<string, string> = {
   "s-fillers-always": "Паразиты-заполнители (эээ, ммм, вот)",
   "s-fillers-delimited": "Паразиты с выделением (типа, короче, в общем)",
   "s-punct-fix": "Исправление пунктуации после удаления паразитов",
+  "s-elongated": "Растянутые слова (нууу, да-а-а)",
+  "d-false-start-dash": "Ложные старты (тире + отмена)",
+  "d-false-start-comma": "Ложные старты (запятая + отмена)",
+  "d-false-start-fragment": "Ложные старты (обрывки слов)",
 };
 
 function formatDateTime(ts: number): string {
