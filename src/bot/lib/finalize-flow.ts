@@ -1,5 +1,4 @@
 import type { Bot } from "grammy";
-import { getEnv } from "@/shared/config/env";
 import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { messages } from "@/bot/messages";
 import { enqueueTask } from "@/features/queue";
@@ -12,7 +11,7 @@ import { createSink } from "@/bot/lib/sink";
  */
 export function enqueueFinalize(bot: Bot, chatId: number): void {
   enqueueTask("finalize", async () => {
-    const sink = createSink(bot, getEnv());
+    const sink = createSink(bot);
     const outcome = await runFinalization(chatId, sink, {
       onStarted: () => bot.api.sendMessage(chatId, messages.finalizing()),
       onFailed: () => bot.api.sendMessage(chatId, messages.genericError()),
@@ -25,6 +24,9 @@ export function enqueueFinalize(bot: Bot, chatId: number): void {
         break;
       case "empty":
         await bot.api.sendMessage(chatId, messages.nothingToLoad());
+        break;
+      case "db-failed":
+        await bot.api.sendMessage(chatId, messages.dbFailed());
         break;
       case "llm-not-implemented":
         await bot.api.sendMessage(chatId, new LlmNotImplementedError().userMessage);

@@ -11,6 +11,7 @@ import {
   type FinalizeItemResult,
 } from "@/features/report";
 import type { OutputSink } from "@/features/sink";
+import { saveMaterial } from "@/entities/material";
 import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { logger } from "@/shared/lib/logger";
 import type { FinalizeHooks, FinalizeOutcome } from "./types";
@@ -97,19 +98,43 @@ export async function runFinalization(
       model: session.items.find((i) => i.meta.model)?.meta.model,
     };
 
+    const totalStats: CleanupStats = {
+      mechanical: {},
+      "file-artifacts": {},
+      defects: {},
+      speech: {},
+    };
+    for (const r of results) addStats(totalStats, r.stats);
+
+    // Запись в БД до выдачи отчёта: юзер должен увидеть её статус.
+    const db = await saveMaterial({
+      text: combined,
+      charsBefore: totalBefore,
+      charsAfter: combined.length,
+      itemsCount: results.length,
+      audioCount: audio.count,
+      audioDurationSec: audio.totalDurationSec,
+      validationOk: validation.ok,
+      warnings: [...new Set(results.flatMap((r) => r.warnings))],
+      stats: totalStats,
+    });
+
     const sections = buildReport({
       createdAt: session.createdAt,
       items: results,
       combinedText: combined,
       validation,
       audio,
+      db,
     });
 
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const d = new Date();
-    const fileBaseName = `result-${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}-${pad(d.getHours())}-${pad(d.getMinutes())}`;
+    await sink.deliver({ chatId, report: renderReport(sections) });
 
-    await sink.deliver({ chatId, text: combined, report: renderReport(sections), fileBaseName });
+    if (!db.ok) {
+      // Сессия сохранена — юзер может повторить /done без потери материала.
+      logger.error("db save failed", { chatId, error: db.error });
+      return "db-failed";
+    }
 
     clearSession(chatId);
     logger.info("finalize done", { chatId, items: results.length, chars: combined.length });

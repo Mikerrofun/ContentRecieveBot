@@ -149,10 +149,17 @@ export function buildReport(input: ReportInput): ReportSection[] {
     ].join("\n"),
   });
 
-  // Заглушка секции чанков (план 11.7): состав появится вместе с нарезкой.
+  const db = input.db;
   sections.push({
-    title: "Подготовка к чанкованию",
-    body: "Текст чистый, нарезка на чанки не выполнялась (вне этой итерации).",
+    title: "Запись в БД",
+    body: db.ok
+      ? [
+          "Статус: выполнена",
+          `ID записи: ${db.record.id}`,
+          `Записано: ${formatDateTime(new Date(db.record.createdAt).getTime())}`,
+          `Символов записано: ${input.combinedText.length}`,
+        ].join("\n")
+      : ["Статус: не выполнена", `Причина: ${db.error}`].join("\n"),
   });
 
   return sections;
