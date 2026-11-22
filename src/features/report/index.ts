@@ -34,6 +34,7 @@ const RULE_LABELS: Record<string, string> = {
   "d-punct-space": "Пробелы вокруг пунктуации",
   "d-repeated-punct": "Повторяющаяся пунктуация",
   "d-repeated-words": "Повторы слов",
+  "d-ellipsis": "Многоточия и мусорные знаки (…, —,)",
   "d-stutter": "Заикание",
   "d-homoglyphs": "Похожие символы (гомоглифы)",
   "d-empty-markers": "Пустые маркеры списков",

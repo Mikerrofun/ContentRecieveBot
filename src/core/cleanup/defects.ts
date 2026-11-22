@@ -189,14 +189,72 @@ export const defectRules: Rule[] = [
     category: "defects",
     run: (t) => {
       let count = 0;
-      const out = t.replace(
-        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)((?:[ \t]+\1(?![\p{L}\p{N}_]))+)(?![\p{L}\p{N}_])/giu,
-        (m, word: string, reps: string) => {
+      // «да-да», «вкусного-вкусного» → одно слово; чуть-чуть, еле-еле не трогаем
+      let out = t.replace(
+        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)-\1(?![\p{L}\p{N}_])/giu,
+        (m, word: string) => {
           if (REPEATED_WORD_EXCEPTIONS.includes(word.toLowerCase())) return m;
-          count += reps.trim().split(/[ \t]+/).length;
+          count++;
           return word;
         }
       );
+      // «в в», «забыл, да, забыл» → одно слово
+      const sep = "(?:[ \\t]+|[ \\t]*,[ \\t]*(?:(?:да|ну|типа|короче|блин)[ \\t]*,[ \\t]*)?)";
+      const re = new RegExp(
+        `(?<![\\p{L}\\p{N}_])([A-Za-zА-Яа-яЁё]+)(?:${sep}\\1(?![\\p{L}\\p{N}_]))+`,
+        "giu"
+      );
+      out = out.replace(re, (m, word: string) => {
+        if (REPEATED_WORD_EXCEPTIONS.includes(word.toLowerCase())) return m;
+        count += m.toLowerCase().split(word.toLowerCase()).length - 2;
+        return word;
+      });
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-ellipsis",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      let out = t;
+      // Мусор в начале текста: «...,», «,…»
+      out = out.replace(/^[ \t]*(?:(?:\.{3}|…|,)[ \t]*)+/, () => {
+        count++;
+        return "";
+      });
+      // «—,» → «—», «…,» → «…»
+      out = out.replace(/([—–])[ \t]*,(?:[ \t]*,)*/g, (_m, d: string) => {
+        count++;
+        return d;
+      });
+      out = out.replace(/(\.{3}|…)[ \t]*,(?:[ \t]*,)*/g, (_m, e: string) => {
+        count++;
+        return e;
+      });
+      // Несколько многоточий подряд → одно
+      out = out.replace(/(\.{3}|…)(?:[ \t]*(?:\.{3}|…))+/g, (_m, e: string) => {
+        count++;
+        return e;
+      });
+      // Многоточие внутри предложения → запятая; слово-повтор после него удаляется
+      for (let i = 0; i < 3; i++) {
+        const before = out;
+        out = out.replace(
+          /([A-Za-zА-Яа-яЁё]+)(?:[ \t]*,[ \t]*)?[ \t]*(?:\.{3}|…)[ \t]+([A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*)/gu,
+          (m, prev: string, next: string, offset: number, s: string) => {
+            const cut = s.slice(0, offset);
+            const lineBefore = cut.slice(cut.lastIndexOf("\n") + 1).trimEnd();
+            if (!/[A-Za-zА-Яа-яЁё]$/.test(lineBefore)) return m;
+            const recent = (lineBefore + " " + prev).toLowerCase().match(/[A-Za-zА-Яа-яЁё]+(?:-[A-Za-zА-Яа-яЁё]+)*/g) ?? [];
+            const recentSet = new Set(recent.slice(-3));
+            count++;
+            if (next.toLowerCase().split("-").some((p) => recentSet.has(p))) return prev + ",";
+            return prev + ", " + next.toLowerCase();
+          }
+        );
+        if (out === before) break;
+      }
       return { text: out, count };
     },
   },
