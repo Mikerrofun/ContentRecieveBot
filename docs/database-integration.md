@@ -112,6 +112,18 @@ RLS включён, политик нет: `anon`/`authenticated` таблицу
 3. Прогнать `npx tsc --noEmit`; запись проверяется живой сессией в боте
    (кнопка «Загрузить в систему» → строка в `materials`).
 
+### Деплой на Railway
+
+- `railway.json` в корне фиксирует сборку (`npm run build`) и запуск
+  (`npm start` = долгоживущий `next start`, нужный для webhook-режима).
+  Без него Railway тоже справится автоопределением, файл — страховка.
+- Переменные окружения задаются в настройках сервиса Railway (не в файлах
+  репозитория): `DATABASE_URL`, `DATABASE_API_SUPABSE`, плюс бот-переменные
+  `TELEGRAM_BOT_TOKEN`, `BOT_MODE=webhook`, `TELEGRAM_WEBHOOK_SECRET`,
+  `PUBLIC_BASE_URL`. Порт Railway подставляет сам — `env.ts` его читает.
+- После первого деплоя один раз выполнить `npm run set-webhook`, чтобы
+  Telegram знал адрес webhook.
+
 ## 9. Ограничения
 
 - **Повторный /done после сбоя БД** прогоняет очистку заново — правила
