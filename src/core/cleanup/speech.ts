@@ -37,11 +37,13 @@ const NU_COMMA_RES = [
   new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}[ \\t]*[,;]`, "gim"),
   new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=$)`, "gim"),
   new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=[ \\t]*—)`, "gim"),
+  new RegExp(`[,;][ \\t]*ну${NU_CONJUNCTION_GUARD}(?=[ \\t]*[.!?…])`, "gim"),
 ];
 const POSITIONAL_COMMA_RES = [
   new RegExp(`[,;][ \\t]*(?:${POSITIONAL_WORDS})[ \\t]*[,;]`, "gim"),
   new RegExp(`[,;][ \\t]*(?:${POSITIONAL_WORDS})(?=$)`, "gim"),
   new RegExp(`[,;][ \\t]*(?:${POSITIONAL_WORDS})(?=[ \\t]*—)`, "gim"),
+  new RegExp(`[,;][ \\t]*(?:${POSITIONAL_WORDS})(?=[ \\t]*[.!?…])`, "gim"),
 ];
 const DASH_RE = new RegExp(
   `[ \\t]—[ \\t]*(?:${buildAlternation([...DELIMITED_POSITIONAL, ...DELIMITED_MULTIWORD_ANYWHERE])})(?=[ \\t]*—)`,

@@ -1,5 +1,5 @@
 import type { CleanupResult } from "@/shared/lib/types";
-import { emptyStats, runRulesById, REGISTRY, type CleanupContext } from "./rules";
+import { emptyStats, runRulesById, REGISTRY, bump, type CleanupContext } from "./rules";
 
 export interface CleanupOptions {
   joinHardWraps: boolean;
@@ -22,6 +22,9 @@ export function runCleanup(text: string, opts: CleanupOptions): CleanupResult {
   let out = text;
   for (const rule of REGISTRY) {
     const res = rule.run(out, ctx);
+    if (res.count > 0) {
+      bump(ctx, rule.category, rule.id, res.count);
+    }
     out = res.text;
   }
 

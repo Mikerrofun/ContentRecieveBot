@@ -16,8 +16,15 @@ export async function transcribeViaOpenAICompatible(
   config: OpenAICompatibleConfig,
   input: TranscribeInput
 ): Promise<TranscribeOutput> {
+  // Groq проверяет расширение файла, а не MIME-тип.
+  // Telegram отправляет .oga (audio/ogg), меняем расширение на .ogg
+  const filename = input.filename.endsWith('.oga') 
+    ? input.filename.replace(/\.oga$/, '.ogg')
+    : input.filename;
+  
   const form = new FormData();
-  form.append("file", new Blob([new Uint8Array(input.buffer)], { type: input.mime }), input.filename);
+  // Используем application/octet-stream — Groq сам определит формат по содержимому
+  form.append("file", new Blob([new Uint8Array(input.buffer)], { type: "application/octet-stream" }), filename);
   form.append("model", config.model);
   form.append("language", input.language);
   form.append("temperature", "0");
@@ -36,8 +43,6 @@ export async function transcribeViaOpenAICompatible(
   }
 
   if (!response.ok) {
-    // Тело ответа может содержать данные пользователя — в лог не идёт,
-    // пользователю отдаётся только статус.
     throw new TranscriptionError(`${config.name} API вернул ${response.status}`);
   }
 

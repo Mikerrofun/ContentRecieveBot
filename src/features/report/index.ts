@@ -10,6 +10,41 @@ const CATEGORY_LABELS: Record<keyof CleanupStats, string> = {
   speech: "Речь (паразиты, заикание, повторы)",
 };
 
+const RULE_LABELS: Record<string, string> = {
+  // Механика
+  "m-strip": "Обрезка концевых пробелов",
+  "m-tags": "Удаление HTML/Markdown тегов",
+  "m-html-tags": "Удаление HTML тегов",
+  "m-blank-lines": "Удаление пустых строк",
+  "m-eol-bom": "Удаление BOM и нормализация переводов строк",
+  "m-final-spaces": "Удаление финальных пробелов",
+  "m-invisible": "Удаление невидимых символов",
+  "m-replacement-char": "Удаление символов замены (�)",
+  "m-whitespace": "Нормализация пробелов",
+  "m-normalize-final": "Финальная нормализация пробелов",
+  // Артефакты файлов
+  "f-page-numbers": "Номера страниц",
+  "f-headers-footers": "Колонтитулы",
+  "f-hard-wraps": "Склейка жёстких переносов внутри абзаца",
+  "f-dehyphenate": "Удаление переносов слов",
+  "f-toc-dots": "Точки из оглавления",
+  // Дефекты
+  "d-glue": "Склейка слов (пробелов между словами)",
+  "d-truncated": "Обрезки слов",
+  "d-punct-space": "Пробелы вокруг пунктуации",
+  "d-repeated-punct": "Повторяющаяся пунктуация",
+  "d-repeated-words": "Повторы слов",
+  "d-stutter": "Заикание",
+  "d-homoglyphs": "Похожие символы (гомоглифы)",
+  "d-empty-markers": "Пустые маркеры списков",
+  "d-hanging-prepositions": "Висячие предлоги",
+  "d-slash-space": "Пробелы вокруг слэша",
+  // Речь
+  "s-fillers-always": "Паразиты-заполнители (эээ, ммм, вот)",
+  "s-fillers-delimited": "Паразиты с выделением (типа, короче, в общем)",
+  "s-punct-fix": "Исправление пунктуации после удаления паразитов",
+};
+
 function formatDateTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -55,11 +90,25 @@ export function buildReport(input: ReportInput): ReportSection[] {
 
   const merged = mergeStats(input.items.map((r) => r.stats));
   const statLines: string[] = [];
+  
   for (const [category, label] of Object.entries(CATEGORY_LABELS) as [keyof CleanupStats, string][]) {
-    const total = Object.values(merged[category]).reduce((a, b) => a + b, 0);
-    statLines.push(`• ${label}: ${total}`);
+    const categoryRules = Object.entries(merged[category]).filter(([_, count]) => count > 0);
+    if (categoryRules.length === 0) continue;
+    
+    const total = categoryRules.reduce((sum, [_, count]) => sum + count, 0);
+    statLines.push(`\n${label}: ${total} исправлений`);
+    
+    for (const [ruleId, count] of categoryRules) {
+      const ruleName = RULE_LABELS[ruleId] || ruleId;
+      statLines.push(`  • ${ruleName}: ${count}`);
+    }
   }
-  sections.push({ title: "Что исправлено", body: statLines.join("\n") });
+  
+  const statsBody = statLines.length > 0 
+    ? statLines.join("\n") 
+    : "Ничего не исправлялось — текст был чистым";
+  
+  sections.push({ title: "Что исправлено", body: statsBody });
 
   const audio = input.audio;
   sections.push({
