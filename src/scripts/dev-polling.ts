@@ -15,7 +15,7 @@ async function main(): Promise<void> {
     logger.warn("BOT_MODE != polling — скрипт всё равно запускает long polling");
   }
 
-  const bot = await createBot(env.TELEGRAM_BOT_TOKEN);
+  const bot = createBot(env.TELEGRAM_BOT_TOKEN);
 
   await bot.api.deleteWebhook({ drop_pending_updates: true });
   await bot.api.setMyCommands([
