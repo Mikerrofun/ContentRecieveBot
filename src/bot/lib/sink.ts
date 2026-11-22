@@ -1,6 +1,4 @@
-import { InputFile } from "grammy";
 import type { Bot } from "grammy";
-import type { Env } from "@/shared/config/env";
 import type { OutputSink, SinkInput } from "@/features/sink";
 
 /**
@@ -14,28 +12,11 @@ async function sendReport(bot: Bot, chatId: number, report: string[]): Promise<v
   }
 }
 
-/** Отдаёт результат файлом .md + отчёт сообщениями. */
-export function createTelegramSink(bot: Bot): OutputSink {
-  return {
-    async deliver(input: SinkInput): Promise<void> {
-      await bot.api.sendDocument(
-        input.chatId,
-        new InputFile(Buffer.from(input.text, "utf8"), `${input.fileBaseName}.md`)
-      );
-      await sendReport(bot, input.chatId, input.report);
-    },
-  };
-}
-
-/** Заглушка режима report-only: только отчёт, без файла. */
-export function createReportOnlySink(bot: Bot): OutputSink {
+/** Отдаёт только отчёт: файл с текстом больше не отправляется, текст живёт в БД. */
+export function createSink(bot: Bot): OutputSink {
   return {
     async deliver(input: SinkInput): Promise<void> {
       await sendReport(bot, input.chatId, input.report);
     },
   };
-}
-
-export function createSink(bot: Bot, env: Env): OutputSink {
-  return env.OUTPUT_MODE === "report-only" ? createReportOnlySink(bot) : createTelegramSink(bot);
 }

@@ -1,0 +1,6 @@
+# Supabase CLI temporary files
+.temp/
+.branches/
+
+# Local development database
+.env

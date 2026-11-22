@@ -2,6 +2,9 @@
   "name": "content-recieve-bot",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,11 +14,13 @@
     "check:cleanup": "tsx src/scripts/check-cleanup.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
     "dotenv": "^18.0.10",
     "grammy": "^1.46.0",
     "mammoth": "^1.13.0",
     "next": "16.4.6",
     "p-queue": "^10.0.0",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "unpdf": "^2.2.1",
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tsx": "^4.23.15",

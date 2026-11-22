@@ -1,5 +1,6 @@
 import type { CleanupStats, ValidationResult } from "@/shared/lib/types";
 import type { SessionItem } from "@/entities/session";
+import type { MaterialSaveResult } from "@/entities/material";
 
 /** Типы отчёта. Сборка и рендер — в index.ts. */
 
@@ -33,4 +34,6 @@ export interface ReportInput {
   combinedText: string;
   validation: ValidationResult;
   audio: AudioMeta;
+  /** Результат записи в БД — секция «Запись в БД» отчёта. */
+  db: MaterialSaveResult;
 }

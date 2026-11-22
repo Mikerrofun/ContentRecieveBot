@@ -26,8 +26,11 @@ const envSchema = z.object({
   MAX_REMOVED_RATIO: z.coerce.number().min(0).max(1).default(0.4),
   JOIN_HARD_WRAPS: z.enum(["pdf", "all", "off"]).default("pdf"),
 
+  // --- База данных (Supabase PostgreSQL) ---
+  DATABASE_URL: z.string().startsWith("postgresql://", "DATABASE_URL должен быть PostgreSQL connection string"),
+  DIRECT_URL: z.string().startsWith("postgresql://", "DIRECT_URL должен быть PostgreSQL connection string").optional(),
+
   // --- Режимы ---
-  OUTPUT_MODE: z.enum(["file+report", "report-only"]).default("file+report"),
   CLEANUP_LLM: z.enum(["off", "on"]).default("off"),
 });
 
