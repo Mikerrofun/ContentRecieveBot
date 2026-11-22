@@ -1,18 +1,29 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Pool, type PoolClient } from "pg";
 import { getEnv } from "@/shared/config/env";
 
-let client: SupabaseClient | null = null;
+let pool: Pool | null = null;
 
 /**
- * Единственный клиент Supabase. Service key живёт только на сервере
- * (env), клиент создаётся лениво при первой записи.
+ * PostgreSQL connection pool для работы с Supabase.
+ * Создаётся лениво при первом обращении.
  */
-export function getSupabase(): SupabaseClient {
-  if (!client) {
+export function getDatabase(): Pool {
+  if (!pool) {
     const env = getEnv();
-    client = createClient(env.DATABASE_URL, env.DATABASE_API_SUPABSE, {
-      auth: { persistSession: false, autoRefreshToken: false },
+    pool = new Pool({
+      connectionString: env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
     });
   }
-  return client;
+  return pool;
+}
+
+/**
+ * Получить клиент из пула для транзакций
+ */
+export async function getClient(): Promise<PoolClient> {
+  return getDatabase().connect();
 }
