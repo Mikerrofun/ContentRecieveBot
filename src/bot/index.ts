@@ -8,7 +8,7 @@ import { registerCallbacks } from "./callbacks";
 import { getEnv } from "@/shared/config/env";
 import { logger } from "@/shared/lib/logger";
 
-export function createBot(token: string): Bot {
+export async function createBot(token: string): Promise<Bot> {
   const bot = new Bot(token);
 
   // Команды регистрируются раньше текстового обработчика
@@ -32,15 +32,28 @@ export function createBot(token: string): Bot {
     });
   });
 
+  // Инициализируем бота для webhook-режима
+  await bot.init();
+
   return bot;
 }
 
 /** Синглтон на globalThis — переживает HMR в dev-режиме Next.js. */
-const g = globalThis as unknown as { __botInstance?: Bot };
+const g = globalThis as unknown as { __botInstance?: Bot; __botInitPromise?: Promise<Bot> };
 
 export function getBot(): Bot {
   if (!g.__botInstance) {
-    g.__botInstance = createBot(getEnv().TELEGRAM_BOT_TOKEN);
+    throw new Error("Bot not initialized! Call initBot() first.");
   }
+  return g.__botInstance;
+}
+
+/** Инициализация бота (асинхронная, вызывается один раз при старте). */
+export async function initBot(): Promise<Bot> {
+  if (g.__botInstance) return g.__botInstance;
+  if (g.__botInitPromise) return g.__botInitPromise;
+
+  g.__botInitPromise = createBot(getEnv().TELEGRAM_BOT_TOKEN);
+  g.__botInstance = await g.__botInitPromise;
   return g.__botInstance;
 }
