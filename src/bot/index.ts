@@ -1,5 +1,4 @@
 import { Bot, GrammyError, HttpError } from "grammy";
-import { whitelistMiddleware } from "./guards";
 import { registerCommands } from "./commands";
 import { registerTextHandler } from "./handlers/text";
 import { registerDocumentHandler } from "./handlers/document";
@@ -11,9 +10,6 @@ import { logger } from "@/shared/lib/logger";
 
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
-
-  // Whitelist — первым middleware, до любых обработчиков
-  bot.use(whitelistMiddleware);
 
   // Команды регистрируются раньше текстового обработчика
   registerCommands(bot);

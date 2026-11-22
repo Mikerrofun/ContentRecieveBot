@@ -6,6 +6,11 @@ import { REPEATED_WORD_EXCEPTIONS } from "@/shared/config/speech-fillers";
 const CYR = "[А-Яа-яЁё]";
 const LAT = "[A-Za-z]";
 
+// Слова отмены для ложных стартов; без флага i, чтобы строчные классы
+// [а-яёa-z] не матчили заглавные (защита терминов и имён собственных).
+const CANCEL_WORDS = "(?:[нН]ет|[нН]е|[тТ]очнее|[вВ]ернее|[тТ]о[ \\t][еЕ]сть)";
+const SENT_START = "(?<=^|\\n|[.!?…][\"»)]?[ \\t])";
+
 const LAT_TO_CYR: Record<string, string> = {
   a: "а", e: "е", o: "о", p: "р", c: "с", x: "х", y: "у",
   A: "А", E: "Е", O: "О", P: "Р", C: "С", X: "Х", Y: "У", T: "Т",
@@ -111,13 +116,66 @@ export const defectRules: Rule[] = [
     },
   },
   {
+    id: "d-false-start-dash",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «я хотел — нет, я думаю» → «я думаю»; обрывок только со строчной
+      const out = t.replace(
+        new RegExp(
+          `${SENT_START}([а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2})[ \\t]*[—–][ \\t]*${CANCEL_WORDS}[ \\t]*,[ \\t]*`,
+          "gm"
+        ),
+        () => {
+          count++;
+          return "";
+        }
+      );
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-false-start-comma",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «в среду, нет, в четверг» → «в четверг»; обрывок только со строчной
+      const out = t.replace(
+        new RegExp(
+          `${SENT_START}([а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2})[ \\t]*,[ \\t]*${CANCEL_WORDS}[ \\t]*,[ \\t]*`,
+          "gm"
+        ),
+        () => {
+          count++;
+          return "";
+        }
+      );
+      return { text: out, count };
+    },
+  },
+  {
+    id: "d-false-start-fragment",
+    category: "defects",
+    run: (t) => {
+      let count = 0;
+      // «он был в чёр— в синей» → «он был в синей»; только строчные обрывки
+      // (термины вида «JavaScript— TypeScript» защищены регистром)
+      const out = t.replace(/(?<![\p{L}\p{N}_])[а-яёa-z]{2,}[—–][ \t]+/gu, () => {
+        count++;
+        return "";
+      });
+      return { text: out, count };
+    },
+  },
+  {
     id: "d-stutter",
     category: "defects",
     run: (t) => {
       let count = 0;
-      // «по-по-посмотрим» → «посмотрим»
+      // «по-по-посмотрим» → «посмотрим»; от 2 букв, чтобы не съедать
+      // дефисные филлеры вида «э-э-э» (их убирает s-fillers-always)
       const out = t.replace(
-        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]{1,5})(?:-\1)+-(?=[A-Za-zА-Яа-яЁё])/giu,
+        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]{2,5})(?:-\1)+-(?=[A-Za-zА-Яа-яЁё])/giu,
         () => {
           count++;
           return "";

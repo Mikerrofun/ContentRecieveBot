@@ -84,10 +84,27 @@ const REPEATED_WORD_RE = new RegExp(
   "giu"
 );
 const STUTTER_RE = new RegExp(
-  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]{1,5})(?:-\\1)+-`,
+  `${LEFT_BOUND}([A-Za-zА-Яа-яЁё]{2,5})(?:-\\1)+-`,
   "giu"
 );
 const HANGING_FRAGMENT_RE = /(?<![\p{L}\p{N}_])[A-Za-zА-Яа-яЁё]{1,3}-[ \t]*$/gmu;
+
+// Ложные старты и растяжки; без флага i — строчные классы защищают термины.
+const CANCEL_WORDS = "(?:[нН]ет|[нН]е|[тТ]очнее|[вВ]ернее|[тТ]о[ \\t][еЕ]сть)";
+const SENT_START = "(?<=^|\\n|[.!?…][\"»)]?[ \\t])";
+const FALSE_START_DASH_RE = new RegExp(
+  `${SENT_START}[а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2}[ \\t]*[—–][ \\t]*${CANCEL_WORDS}[ \\t]*,`,
+  "gm"
+);
+const FALSE_START_COMMA_RE = new RegExp(
+  `${SENT_START}[а-яёa-z]+(?:[ \\t]+[а-яёa-z]+){0,2}[ \\t]*,[ \\t]*${CANCEL_WORDS}[ \\t]*,`,
+  "gm"
+);
+const FALSE_START_FRAGMENT_RE = /(?<![\p{L}\p{N}_])[а-яёa-z]{2,}[—–][ \t]+(?=[а-яёa-z])/gu;
+const ELONGATED_HYPHEN_RE = /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)-([A-Za-zА-Яа-яЁё])(?:-\2)+(?![\p{L}\p{N}_])/gu;
+const WORD_TOKEN_RE = /(?<![\p{L}\p{N}_])[A-Za-zА-Яа-яЁё]+(?![\p{L}\p{N}_])/gu;
+const LETTER_RUN_RE = /([A-Za-zА-Яа-яЁё])\1{2,}/u;
+const ALWAYS_SET = new Set(ALWAYS_FILLERS.map((w) => w.toLowerCase()));
 
 export const CRITERIA: Criterion[] = [
   {
@@ -292,6 +309,48 @@ export const CRITERIA: Criterion[] = [
         count: 1,
         samples: [`удалено ${Math.round(removedRatio * 100)}% символов (лимит ${Math.round(maxRemovedRatio * 100)}%)`],
       };
+    },
+  },
+  {
+    id: "V19",
+    severity: "error",
+    fixable: true,
+    check: ({ text }) => {
+      let count = 0;
+      const samples: string[] = [];
+      for (const re of [FALSE_START_DASH_RE, FALSE_START_COMMA_RE, FALSE_START_FRAGMENT_RE]) {
+        for (const m of text.matchAll(re)) {
+          count++;
+          if (samples.length < 3) samples.push(sample(m[0]));
+        }
+      }
+      if (count === 0) return null;
+      return { count, samples };
+    },
+  },
+  {
+    id: "V20",
+    severity: "error",
+    fixable: true,
+    check: ({ text }) => {
+      let count = 0;
+      const samples: string[] = [];
+      for (const m of text.matchAll(ELONGATED_HYPHEN_RE)) {
+        if (ALWAYS_SET.has(m[0].toLowerCase())) continue;
+        const [, word, letter] = m;
+        if (word.slice(-1).toLowerCase() !== letter.toLowerCase()) continue;
+        count++;
+        if (samples.length < 3) samples.push(sample(m[0]));
+      }
+      for (const m of text.matchAll(WORD_TOKEN_RE)) {
+        if (ALWAYS_SET.has(m[0].toLowerCase())) continue;
+        if (m[0] === m[0].toUpperCase() && m[0].length > 1) continue;
+        if (!LETTER_RUN_RE.test(m[0])) continue;
+        count++;
+        if (samples.length < 3) samples.push(sample(m[0]));
+      }
+      if (count === 0) return null;
+      return { count, samples };
     },
   },
 ];

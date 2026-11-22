@@ -22,6 +22,8 @@ const CRITERION_RULES: Record<string, string[]> = {
   V13: ["d-repeated-words"],
   V14: ["d-truncated", "d-stutter"],
   V15: ["f-page-numbers", "d-empty-markers"],
+  V19: ["d-false-start-dash", "d-false-start-comma", "d-false-start-fragment"],
+  V20: ["s-elongated"],
 };
 
 const MAX_PASSES = 3;

@@ -81,6 +81,31 @@ export const speechRules: Rule[] = [
     },
   },
   {
+    id: "s-elongated",
+    category: "speech",
+    run: (t) => {
+      let count = 0;
+      // Дефисные растяжки: «да-а-а» → «да» (ну-у-у и э-э-э уже в ALWAYS_FILLERS)
+      let out = t.replace(
+        /(?<![\p{L}\p{N}_])([A-Za-zА-Яа-яЁё]+)(?:-([A-Za-zА-Яа-яЁё]))(?:-\2)+(?![\p{L}\p{N}_])/giu,
+        (m, word: string, letter: string) => {
+          if (word.slice(-1).toLowerCase() !== letter.toLowerCase()) return m;
+          count++;
+          return word;
+        }
+      );
+      // Повторяющиеся буквы: «нууу» → «ну»; аббревиатуры вида СССР не трогаем
+      out = out.replace(/(?<![\p{L}\p{N}_])[A-Za-zА-Яа-яЁё]+(?![\p{L}\p{N}_])/giu, (word) => {
+        if (word === word.toUpperCase() && word.length > 1) return word;
+        return word.replace(/([A-Za-zА-Яа-яЁё])\1{2,}/gu, (_run, ch: string) => {
+          count++;
+          return ch;
+        });
+      });
+      return { text: out, count };
+    },
+  },
+  {
     id: "s-punct-fix",
     category: "speech",
     run: (t) => {
