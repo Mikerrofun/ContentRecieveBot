@@ -30,8 +30,12 @@ const envSchema = z.object({
   DATABASE_URL: z.string().startsWith("postgresql://", "DATABASE_URL должен быть PostgreSQL connection string"),
   DIRECT_URL: z.string().startsWith("postgresql://", "DIRECT_URL должен быть PostgreSQL connection string").optional(),
 
-  // --- Режимы ---
-  CLEANUP_LLM: z.enum(["off", "on"]).default("off"),
+  // --- LLM-проход (OpenRouter) ---
+  OPENROUTER_API_KEY: z.string().default(""),
+  LLM_VALIDATION: z.enum(["off", "on"]).default("on"),
+  LLM_CHUNK_MAX_TOKENS: z.coerce.number().int().positive().default(2500),
+  LLM_CONCURRENCY: z.coerce.number().int().positive().default(4),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -62,6 +66,9 @@ export function getEnv(): Env {
   }
   if (env.WHISPER_PROVIDER === "groq" && !env.GROQ_API_KEY) {
     problems.push("GROQ_API_KEY обязателен при WHISPER_PROVIDER=groq");
+  }
+  if (env.LLM_VALIDATION === "on" && !env.OPENROUTER_API_KEY) {
+    problems.push("OPENROUTER_API_KEY обязателен при LLM_VALIDATION=on");
   }
 
   if (problems.length > 0) {

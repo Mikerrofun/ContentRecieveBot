@@ -63,12 +63,6 @@ export class SessionNotFoundError extends AppError {
   }
 }
 
-export class LlmNotImplementedError extends AppError {
-  constructor() {
-    super("LLM-очистка не реализована в этой итерации (CLEANUP_LLM=on не поддерживается)");
-  }
-}
-
 export function isAppError(e: unknown): e is AppError {
   return e instanceof AppError;
 }

@@ -56,6 +56,12 @@ function formatDateTime(ts: number): string {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatNumber(n: number): string {
+  return Math.round(n)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
 function mergeStats(list: CleanupStats[]): CleanupStats {
   const out: CleanupStats = {
     mechanical: {},
@@ -148,6 +154,36 @@ export function buildReport(input: ReportInput): ReportSection[] {
       ...(warnings.length > 0 ? ["Предупреждения:", ...warnings.map((w) => `• ${w}`)] : []),
     ].join("\n"),
   });
+
+  const llm = input.llm;
+  if (llm) {
+    if (llm.status === "done") {
+      const reverted = llm.chunkResults.filter((r) => r.status === "reverted").length;
+      const primary = llm.chunkResults.filter((r) => r.status === "ok-primary").length;
+      const fallback = llm.chunkResults.filter((r) => r.status === "ok-fallback").length;
+      const diff = llm.charsAfter - llm.charsBefore;
+      const pct = llm.charsBefore > 0 ? (diff / llm.charsBefore) * 100 : 0;
+      sections.push({
+        title: "LLM-прогон",
+        body: [
+          `Статус: выполнен (${llm.chunksTotal - reverted} из ${llm.chunksTotal} частей; ${reverted} без правок)`,
+          `Модели: ${llm.primaryModel} — ${primary}, ${llm.fallbackModel} (резерв) — ${fallback}`,
+          `После функций: ${formatNumber(llm.charsBefore)} симв.`,
+          `После LLM: ${formatNumber(llm.charsAfter)} симв. (${diff >= 0 ? "+" : ""}${formatNumber(diff)}, ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`,
+          `Токены: ${formatNumber(llm.usage.inputTokens)} вход / ${formatNumber(llm.usage.outputTokens)} выход, ~$${llm.usage.costUsd.toFixed(3)}`,
+        ].join("\n"),
+      });
+    } else {
+      sections.push({
+        title: "LLM-прогон",
+        body: [
+          "Статус: не выполнен",
+          ...(llm.error ? [`Причина: ${llm.error}`] : []),
+          "Текст остаётся после функций.",
+        ].join("\n"),
+      });
+    }
+  }
 
   const db = input.db;
   sections.push({

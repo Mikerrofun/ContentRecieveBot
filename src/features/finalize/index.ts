@@ -1,7 +1,7 @@
 import { getEnv } from "@/shared/config/env";
 import { clearSession, findActiveSession } from "@/entities/session";
 import type { CleanupStats } from "@/shared/lib/types";
-import { runCleanup, optionalLlmPass } from "@/core/cleanup";
+import { runCleanup } from "@/core/cleanup";
 import { autofix } from "@/core/autofix";
 import { validate } from "@/core/validate";
 import {
@@ -10,10 +10,10 @@ import {
   type AudioMeta,
   type FinalizeItemResult,
 } from "@/features/report";
+import { llmValidate, llmFailedResult, type LlmValidateResult } from "@/features/llm-validate";
 import type { OutputSink } from "@/features/sink";
 import { buildTranscriptFile } from "@/features/transcript-file";
 import { saveMaterial } from "@/entities/material";
-import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { logger } from "@/shared/lib/logger";
 import type { FinalizeHooks, FinalizeOutcome } from "./types";
 
@@ -49,8 +49,6 @@ export async function runFinalization(
   // Защита от двойного запуска (/done + кнопка, повторный /done)
   if (session.status === "processing") return "busy";
 
-  if (env.CLEANUP_LLM === "on" && optionalLlmPass === null) return "llm-not-implemented";
-
   session.status = "processing";
   try {
     await hooks.onStarted?.();
@@ -84,13 +82,36 @@ export async function runFinalization(
       });
     }
 
-    const combined = results.map((r) => r.cleanedText).join("\n\n");
     const totalBefore = session.items.reduce((n, i) => n + i.rawText.length, 0);
-    const totalRatio = totalBefore > 0 ? 1 - combined.length / totalBefore : 0;
-    const validation = validate(combined, {
+    let combined = results.map((r) => r.cleanedText).join("\n\n");
+    let totalRatio = totalBefore > 0 ? 1 - combined.length / totalBefore : 0;
+    let validation = validate(combined, {
       removedRatio: totalRatio,
       maxRemovedRatio: env.MAX_REMOVED_RATIO,
     });
+
+    // Финальный LLM-проход — между склейкой функций и записью в БД.
+    // Сбой LLM не роняет финализацию: текст остаётся после функций.
+    let llmResult: LlmValidateResult | null = null;
+    if (env.LLM_VALIDATION === "on") {
+      try {
+        llmResult = await llmValidate(combined);
+        if (llmResult.status === "done") {
+          combined = llmResult.text;
+          totalRatio = totalBefore > 0 ? 1 - combined.length / totalBefore : 0;
+          validation = validate(combined, {
+            removedRatio: totalRatio,
+            maxRemovedRatio: env.MAX_REMOVED_RATIO,
+          });
+        } else {
+          logger.warn("llm validation failed", { chatId, reason: llmResult.error });
+        }
+      } catch (e) {
+        const reason = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+        logger.error("llm validation crashed", { chatId, error: reason });
+        llmResult = llmFailedResult(combined, reason);
+      }
+    }
 
     const audio: AudioMeta = {
       count: results.filter((r) => r.item.kind === "voice" || r.item.kind === "audio").length,
@@ -118,6 +139,11 @@ export async function runFinalization(
       validationOk: validation.ok,
       warnings: [...new Set(results.flatMap((r) => r.warnings))],
       stats: totalStats,
+      llmStatus: llmResult?.status ?? null,
+      llmModel: llmResult?.primaryModel ?? null,
+      llmInputTokens: llmResult?.usage.inputTokens ?? 0,
+      llmOutputTokens: llmResult?.usage.outputTokens ?? 0,
+      llmCostUsd: llmResult?.usage.costUsd ?? 0,
     });
 
     const sections = buildReport({
@@ -127,6 +153,7 @@ export async function runFinalization(
       validation,
       audio,
       db,
+      llm: llmResult,
     });
 
     // Файл с транскриптом отправляется всегда, даже при сбое БД:

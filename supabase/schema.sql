@@ -12,7 +12,12 @@ create table if not exists public.materials (
   audio_duration_sec integer not null default 0,
   validation_ok boolean not null,
   warnings jsonb not null default '[]'::jsonb,
-  stats jsonb not null default '{}'::jsonb
+  stats jsonb not null default '{}'::jsonb,
+  llm_status text,
+  llm_model text,
+  llm_input_tokens integer not null default 0,
+  llm_output_tokens integer not null default 0,
+  llm_cost_usd numeric(12, 6) not null default 0
 );
 
 comment on table public.materials is

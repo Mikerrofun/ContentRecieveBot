@@ -1,5 +1,4 @@
 import type { Bot } from "grammy";
-import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { messages } from "@/bot/messages";
 import { enqueueTask } from "@/features/queue";
 import { runFinalization } from "@/features/finalize";
@@ -12,25 +11,34 @@ import { createSink } from "@/bot/lib/sink";
 export function enqueueFinalize(bot: Bot, chatId: number): void {
   enqueueTask("finalize", async () => {
     const sink = createSink(bot);
-    const outcome = await runFinalization(chatId, sink, {
-      onStarted: () => bot.api.sendMessage(chatId, messages.finalizing()),
-      onFailed: () => bot.api.sendMessage(chatId, messages.genericError()),
-    });
+    let statusMessageId: number | undefined;
 
-    switch (outcome) {
-      case "done":
-      case "busy":
-      case "failed": // onFailed уже отправил сообщение
-        break;
-      case "empty":
-        await bot.api.sendMessage(chatId, messages.nothingToLoad());
-        break;
-      case "db-failed":
-        await bot.api.sendMessage(chatId, messages.dbFailed());
-        break;
-      case "llm-not-implemented":
-        await bot.api.sendMessage(chatId, new LlmNotImplementedError().userMessage);
-        break;
+    try {
+      const outcome = await runFinalization(chatId, sink, {
+        onStarted: async () => {
+          const msg = await bot.api.sendMessage(chatId, messages.finalizing());
+          statusMessageId = msg.message_id;
+        },
+        onFailed: () => bot.api.sendMessage(chatId, messages.genericError()),
+      });
+
+      switch (outcome) {
+        case "done":
+        case "busy":
+        case "failed": // onFailed уже отправил сообщение
+          break;
+        case "empty":
+          await bot.api.sendMessage(chatId, messages.nothingToLoad());
+          break;
+        case "db-failed":
+          await bot.api.sendMessage(chatId, messages.dbFailed());
+          break;
+      }
+    } finally {
+      // Убираем «Обрабатываю…» после завершения, чтобы не висело в чате.
+      if (statusMessageId !== undefined) {
+        await bot.api.deleteMessage(chatId, statusMessageId).catch(() => undefined);
+      }
     }
   });
 }
