@@ -1,6 +1,7 @@
 import type { CleanupStats, ValidationResult } from "@/shared/lib/types";
 import type { SessionItem } from "@/entities/session";
 import type { MaterialSaveResult } from "@/entities/material";
+import type { LlmValidateResult } from "@/features/llm-validate";
 
 /** Типы отчёта. Сборка и рендер — в index.ts. */
 
@@ -36,4 +37,6 @@ export interface ReportInput {
   audio: AudioMeta;
   /** Результат записи в БД — секция «Запись в БД» отчёта. */
   db: MaterialSaveResult;
+  /** Сводка LLM-прохода — секция «LLM-прогон» (null, если выключен). */
+  llm?: LlmValidateResult | null;
 }

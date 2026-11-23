@@ -13,9 +13,10 @@ export async function saveMaterial(input: MaterialRecordInput): Promise<Material
     const query = `
       INSERT INTO materials (
         text, chars_before, chars_after, items_count, audio_count, 
-        audio_duration_sec, validation_ok, warnings, stats
+        audio_duration_sec, validation_ok, warnings, stats,
+        llm_status, llm_model, llm_input_tokens, llm_output_tokens, llm_cost_usd
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id, created_at
     `;
 
@@ -29,6 +30,11 @@ export async function saveMaterial(input: MaterialRecordInput): Promise<Material
       input.validationOk,
       input.warnings,
       JSON.stringify(input.stats),
+      input.llmStatus ?? null,
+      input.llmModel ?? null,
+      input.llmInputTokens ?? 0,
+      input.llmOutputTokens ?? 0,
+      input.llmCostUsd ?? 0,
     ];
 
     const result = await db.query(query, values);

@@ -17,7 +17,7 @@
 
 ```
 supabase/schema.sql                  — SQL-схема (применяется вручную в SQL Editor)
-src/shared/api/supabase.ts           — единственный клиент Supabase (ленивый синглтон)
+src/shared/api/supabase.ts           — единственный клиент БД (pg, ленивый синглтон пула)
 src/entities/material/
   types.ts   — MaterialRecordInput, MaterialRecord, MaterialSaveResult
   api.ts     — saveMaterial(): insert в таблицу materials
@@ -25,7 +25,7 @@ src/entities/material/
 src/features/finalize/index.ts       — сборка записи и вызов saveMaterial
 src/features/report/index.ts         — секция «Запись в БД» отчёта
 src/bot/lib/sink.ts                  — выдача: только отчёт, без файла
-src/shared/config/env.ts             — DATABASE_URL, DATABASE_API_SUPABSE
+src/shared/config/env.ts             — DATABASE_URL, DIRECT_URL
 ```
 
 Слои по FSD: `shared/api` — инфраструктура клиента, `entities/material` —
@@ -50,6 +50,11 @@ src/shared/config/env.ts             — DATABASE_URL, DATABASE_API_SUPABSE
 | `validation_ok` | boolean | итог валидатора по склеенному тексту |
 | `warnings` | jsonb | предупреждения очистки (массив строк) |
 | `stats` | jsonb | `CleanupStats`: срабатывания правил по категориям |
+| `llm_status` | text | статус LLM-прохода: `done` / `failed` / NULL (выключен) |
+| `llm_model` | text | основная модель LLM-прохода |
+| `llm_input_tokens` | integer | суммарно входных токенов LLM |
+| `llm_output_tokens` | integer | суммарно выходных токенов LLM |
+| `llm_cost_usd` | numeric | оценка стоимости LLM-прохода, USD |
 
 RLS включён, политик нет: `anon`/`authenticated` таблицу не видят вовсе,
 запись идёт только service key (он RLS обходит). Service key живёт только
@@ -59,10 +64,10 @@ RLS включён, политик нет: `anon`/`authenticated` таблицу
 
 | Переменная | Что это |
 |---|---|
-| `DATABASE_URL` | URL проекта Supabase (`https://xxxx.supabase.co`) |
-| `DATABASE_API_SUPABSE` | Service role secret key из Supabase |
+| `DATABASE_URL` | PostgreSQL connection string (Transaction pooler Supabase, `postgresql://…`) |
+| `DIRECT_URL` | Session pooler для миграций (опционально, `postgresql://…`) |
 
-Обе обязательны: без них `getEnv()` падает с понятной ошибкой. Список —
+`DATABASE_URL` обязателен: без него `getEnv()` падает с понятной ошибкой. Список —
 в `.env.example`.
 
 ## 5. Поток данных
@@ -97,8 +102,8 @@ RLS включён, политик нет: `anon`/`authenticated` таблицу
 
 - **Одна строка на сессию.** Основная система режет на чанки цельный
   материал; отдельные элементы сессии — деталь приёма, а не хранения.
-- **supabase-js, а не SQL-драйвер.** Insert через REST проще, клиент
-  типизирован, отдельный коннект к Postgres не нужен.
+- **Postgres-драйвер (`pg`), а не supabase-js.** Прямой insert по
+  connection string проще и не тянет REST-клиент; пул переиспользуется.
 - **Ошибки БД не бросаются.** `saveMaterial` возвращает `MaterialSaveResult`:
   финализация обязана показать отчёт даже при сбое, а сессия не теряется.
 - **RLS без политик.** Проще и безопаснее, чем «политика только для service
@@ -107,7 +112,7 @@ RLS включён, политик нет: `anon`/`authenticated` таблицу
 ## 8. Как развернуть
 
 1. В SQL Editor Supabase выполнить `supabase/schema.sql`.
-2. Добавить `DATABASE_URL` и `DATABASE_API_SUPABSE` в env (локально —
+2. Добавить `DATABASE_URL` (и `DIRECT_URL` для миграций) в env (локально —
    `.env.development.local`, в проде — переменные окружения хостинга).
 3. Прогнать `npx tsc --noEmit`; запись проверяется живой сессией в боте
    (кнопка «Загрузить в систему» → строка в `materials`).
@@ -118,7 +123,7 @@ RLS включён, политик нет: `anon`/`authenticated` таблицу
   (`npm start` = долгоживущий `next start`, нужный для webhook-режима).
   Без него Railway тоже справится автоопределением, файл — страховка.
 - Переменные окружения задаются в настройках сервиса Railway (не в файлах
-  репозитория): `DATABASE_URL`, `DATABASE_API_SUPABSE`, плюс бот-переменные
+  репозитория): `DATABASE_URL`, `DIRECT_URL`, `OPENROUTER_API_KEY`, плюс бот-переменные
   `TELEGRAM_BOT_TOKEN`, `BOT_MODE=webhook`, `TELEGRAM_WEBHOOK_SECRET`,
   `PUBLIC_BASE_URL`. Порт Railway подставляет сам — `env.ts` его читает.
 - После первого деплоя один раз выполнить `npm run set-webhook`, чтобы

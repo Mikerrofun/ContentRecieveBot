@@ -20,3 +20,19 @@ export interface TranscriptionProvider {
   name: ProviderName;
   transcribe(input: TranscribeInput): Promise<TranscribeOutput>;
 }
+
+/** Вход transcribeAudio (публичный контракт фичи). */
+export interface TranscribeAudioInput {
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+  /** Вызывается перед каждой повторной попыткой (для сообщения «Повторяю…»). */
+  onAttemptFail?: () => Promise<void> | void;
+}
+
+export interface TranscribeAudioOutput {
+  text: string;
+  durationSec?: number;
+  provider: string;
+  model: string;
+}

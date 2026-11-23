@@ -13,6 +13,13 @@ export interface MaterialRecordInput {
   validationOk: boolean;
   warnings: string[];
   stats: CleanupStats;
+  /** Статус LLM-прохода: "done" | "failed" | null (выключен). */
+  llmStatus?: string | null;
+  /** Основная модель LLM-прохода. */
+  llmModel?: string | null;
+  llmInputTokens?: number;
+  llmOutputTokens?: number;
+  llmCostUsd?: number;
 }
 
 export interface MaterialRecord {
