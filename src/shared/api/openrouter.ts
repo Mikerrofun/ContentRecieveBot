@@ -35,6 +35,7 @@ export async function callChatCompletion(input: ChatCompletionInput): Promise<Ch
         ],
         max_tokens: input.maxTokens,
         temperature: 0,
+        ...(input.reasoning ? { reasoning: input.reasoning } : {}),
       }),
       signal,
     });
@@ -51,6 +52,15 @@ export async function callChatCompletion(input: ChatCompletionInput): Promise<Ch
   }
 
   const data = (await response.json().catch(() => null)) as OpenRouterResponse | null;
+  const usage = {
+    input: data?.usage?.prompt_tokens ?? 0,
+    output: data?.usage?.completion_tokens ?? 0,
+  };
+  // Учитываем потраченные токены до проверки на пустой content: reasoning-модель
+  // может сжечь весь бюджет на «размышления» и вернуть пустой ответ — токены
+  // всё равно списаны, и в отчёте должна быть реальная цена.
+  input.onUsage?.(input.model, usage);
+
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || text.trim() === "") {
     throw new RetryableError("пустой ответ модели");
@@ -59,9 +69,6 @@ export async function callChatCompletion(input: ChatCompletionInput): Promise<Ch
   return {
     text,
     model: input.model,
-    usage: {
-      input: data?.usage?.prompt_tokens ?? 0,
-      output: data?.usage?.completion_tokens ?? 0,
-    },
+    usage,
   };
 }

@@ -10,6 +10,10 @@ export interface ChatCompletionInput {
   system: string;
   user: string;
   maxTokens: number;
+  /** Управление «размышлениями» reasoning-модели (OpenRouter reasoning.effort). */
+  reasoning?: { effort: "minimal" | "low" | "medium" | "high" };
+  /** Хук учёта токенов: вызывается на каждый ответ (в т.ч. с пустым content). */
+  onUsage?: (model: string, usage: TokenUsage) => void;
   /** Сигнал отмены/таймаута на попытку (создаётся в withRetry). */
   signal?: AbortSignal;
 }

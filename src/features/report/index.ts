@@ -3,52 +3,18 @@ import type { AudioMeta, FinalizeItemResult, ReportInput, ReportSection } from "
 
 export type { AudioMeta, FinalizeItemResult, ReportInput, ReportSection } from "./types";
 
-const CATEGORY_LABELS: Record<keyof CleanupStats, string> = {
-  mechanical: "Механика (теги, пробелы, пустые строки)",
-  "file-artifacts": "Артефакты файлов (номера страниц, колонтитулы, переносы)",
-  defects: "Дефекты (склейки, обрезки слов, пунктуация)",
-  speech: "Речь (паразиты, заикание, повторы)",
+/** Короткие подписи категорий правок для сводки «Что исправлено». */
+const CATEGORY_SHORT: Record<keyof CleanupStats, string> = {
+  mechanical: "Механика",
+  "file-artifacts": "Артефакты",
+  defects: "Дефекты",
+  speech: "Речь",
 };
 
-const RULE_LABELS: Record<string, string> = {
-  // Механика
-  "m-strip": "Обрезка концевых пробелов",
-  "m-tags": "Удаление HTML/Markdown тегов",
-  "m-html-tags": "Удаление HTML тегов",
-  "m-blank-lines": "Удаление пустых строк",
-  "m-eol-bom": "Удаление BOM и нормализация переводов строк",
-  "m-final-spaces": "Удаление финальных пробелов",
-  "m-invisible": "Удаление невидимых символов",
-  "m-replacement-char": "Удаление символов замены (�)",
-  "m-whitespace": "Нормализация пробелов",
-  "m-normalize-final": "Финальная нормализация пробелов",
-  // Артефакты файлов
-  "f-page-numbers": "Номера страниц",
-  "f-headers-footers": "Колонтитулы",
-  "f-hard-wraps": "Склейка жёстких переносов внутри абзаца",
-  "f-dehyphenate": "Удаление переносов слов",
-  "f-toc-dots": "Точки из оглавления",
-  // Дефекты
-  "d-glue": "Склейка слов (пробелов между словами)",
-  "d-truncated": "Обрезки слов",
-  "d-punct-space": "Пробелы вокруг пунктуации",
-  "d-repeated-punct": "Повторяющаяся пунктуация",
-  "d-repeated-words": "Повторы слов",
-  "d-ellipsis": "Многоточия и мусорные знаки (…, —,)",
-  "d-stutter": "Заикание",
-  "d-homoglyphs": "Похожие символы (гомоглифы)",
-  "d-empty-markers": "Пустые маркеры списков",
-  "d-hanging-prepositions": "Висячие предлоги",
-  "d-slash-space": "Пробелы вокруг слэша",
-  // Речь
-  "s-fillers-always": "Паразиты-заполнители (эээ, ммм, вот)",
-  "s-fillers-delimited": "Паразиты с выделением (типа, короче, в общем)",
-  "s-punct-fix": "Исправление пунктуации после удаления паразитов",
-  "s-elongated": "Растянутые слова (нууу, да-а-а)",
-  "d-false-start-dash": "Ложные старты (тире + отмена)",
-  "d-false-start-comma": "Ложные старты (запятая + отмена)",
-  "d-false-start-fragment": "Ложные старты (обрывки слов)",
-};
+/** Экранирование под HTML parse_mode (на случай динамических строк в отчёте). */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 function formatDateTime(ts: number): string {
   const d = new Date(ts);
@@ -60,6 +26,14 @@ function formatNumber(n: number): string {
   return Math.round(n)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+/** Цена с адаптивной точностью: мелкие суммы не округляются до «0.000». */
+function formatCost(n: number): string {
+  if (n <= 0) return "$0";
+  if (n >= 1) return `$${n.toFixed(3)}`;
+  if (n >= 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(5)}`;
 }
 
 function mergeStats(list: CleanupStats[]): CleanupStats {
@@ -79,70 +53,33 @@ function mergeStats(list: CleanupStats[]): CleanupStats {
   return out;
 }
 
-/** Отчёт по разделу 11 плана: секции, склеиваемые в сообщения ≤ 4096 символов. */
+/**
+ * Сборка отчёта: короткий саммари в HTML (parse_mode HTML). Верх — итог
+ * «было → стало» после всей обработки (включая LLM); далее только сухие
+ * счётчики: что исправлено, автопочинка, статус+цена LLM, номер записи в БД.
+ */
 export function buildReport(input: ReportInput): ReportSection[] {
   const sections: ReportSection[] = [];
 
-  const materials = input.items
-    .map((r) => `• ${r.item.label}: ${r.charsBefore} → ${r.charsAfter} симв.`)
-    .join("\n");
   const totalBefore = input.items.reduce((n, r) => n + r.charsBefore, 0);
-  const totalAfter = input.items.reduce((n, r) => n + r.charsAfter, 0);
+  const totalAfter = input.combinedText.length;
 
   sections.push({
-    title: "Материалы",
     body: [
-      `Дата: ${formatDateTime(input.createdAt)}`,
-      `Элементов: ${input.items.length}`,
-      materials,
-      `Итого: ${totalBefore} → ${totalAfter} симв.`,
+      `<b>Готово</b> · ${formatDateTime(input.createdAt)}`,
+      `Было <b>${formatNumber(totalBefore)}</b> → стало <b>${formatNumber(totalAfter)}</b> симв.`,
     ].join("\n"),
   });
 
   const merged = mergeStats(input.items.map((r) => r.stats));
-  const statLines: string[] = [];
-  
-  for (const [category, label] of Object.entries(CATEGORY_LABELS) as [keyof CleanupStats, string][]) {
-    const categoryRules = Object.entries(merged[category]).filter(([_, count]) => count > 0);
-    if (categoryRules.length === 0) continue;
-    
-    const total = categoryRules.reduce((sum, [_, count]) => sum + count, 0);
-    statLines.push(`\n${label}: ${total} исправлений`);
-    
-    for (const [ruleId, count] of categoryRules) {
-      const ruleName = RULE_LABELS[ruleId] || ruleId;
-      statLines.push(`  • ${ruleName}: ${count}`);
-    }
+  const parts: string[] = [];
+  for (const category of Object.keys(CATEGORY_SHORT) as (keyof CleanupStats)[]) {
+    const total = Object.values(merged[category]).reduce((sum, count) => sum + count, 0);
+    if (total > 0) parts.push(`${CATEGORY_SHORT[category]}: ${total}`);
   }
-  
-  const statsBody = statLines.length > 0 
-    ? statLines.join("\n") 
-    : "Ничего не исправлялось — текст был чистым";
-  
-  sections.push({ title: "Что исправлено", body: statsBody });
-
-  const audio = input.audio;
   sections.push({
-    title: "Аудио",
-    body: [
-      audio.count > 0
-        ? `Записей: ${audio.count}, суммарно ${Math.round(audio.totalDurationSec / 60)} мин`
-        : "Аудиозаписей не было",
-      audio.provider ? `Провайдер: ${audio.provider}, модель: ${audio.model ?? "—"}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  });
-
-  const validationLines = input.validation.violations.map(
-    (v) => `• ${v.criterion} (${v.severity === "warn" ? "предупреждение" : "нарушение"}): ${v.count} — ${v.samples.join(" | ")}`
-  );
-  sections.push({
-    title: "Валидация",
-    body: [
-      input.validation.ok ? "Статус: чисто" : "Статус: есть замечания",
-      ...(validationLines.length > 0 ? ["", ...validationLines] : []),
-    ].join("\n"),
+    title: "Что исправлено",
+    body: parts.length > 0 ? parts.join(" · ") : "Ничего не исправлялось",
   });
 
   const passes = Math.max(0, ...input.items.map((r) => r.autofixPasses));
@@ -151,51 +88,28 @@ export function buildReport(input: ReportInput): ReportSection[] {
     title: "Автопочинка",
     body: [
       `Проходов: ${passes}`,
-      ...(warnings.length > 0 ? ["Предупреждения:", ...warnings.map((w) => `• ${w}`)] : []),
+      ...(warnings.length > 0 ? ["Предупреждения:", ...warnings.map((w) => `• ${escapeHtml(w)}`)] : []),
     ].join("\n"),
   });
 
   const llm = input.llm;
   if (llm) {
-    if (llm.status === "done") {
-      const reverted = llm.chunkResults.filter((r) => r.status === "reverted").length;
-      const primary = llm.chunkResults.filter((r) => r.status === "ok-primary").length;
-      const fallback = llm.chunkResults.filter((r) => r.status === "ok-fallback").length;
-      const diff = llm.charsAfter - llm.charsBefore;
-      const pct = llm.charsBefore > 0 ? (diff / llm.charsBefore) * 100 : 0;
-      sections.push({
-        title: "LLM-прогон",
-        body: [
-          `Статус: выполнен (${llm.chunksTotal - reverted} из ${llm.chunksTotal} частей; ${reverted} без правок)`,
-          `Модели: ${llm.primaryModel} — ${primary}, ${llm.fallbackModel} (резерв) — ${fallback}`,
-          `После функций: ${formatNumber(llm.charsBefore)} симв.`,
-          `После LLM: ${formatNumber(llm.charsAfter)} симв. (${diff >= 0 ? "+" : ""}${formatNumber(diff)}, ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`,
-          `Токены: ${formatNumber(llm.usage.inputTokens)} вход / ${formatNumber(llm.usage.outputTokens)} выход, ~$${llm.usage.costUsd.toFixed(3)}`,
-        ].join("\n"),
-      });
-    } else {
-      sections.push({
-        title: "LLM-прогон",
-        body: [
-          "Статус: не выполнен",
-          ...(llm.error ? [`Причина: ${llm.error}`] : []),
-          "Текст остаётся после функций.",
-        ].join("\n"),
-      });
-    }
+    const status = llm.status === "done" ? "Выполнен" : "Не выполнен";
+    // Модель, которая реально сделала правку: если хоть один чанк ушёл в резерв —
+    // это qwen, иначе основная (deepseek). Метка — вендор до «/».
+    const modelId = llm.chunkResults.some((r) => r.status === "ok-fallback")
+      ? llm.fallbackModel
+      : llm.primaryModel;
+    const label = modelId.split("/")[0];
+    sections.push({ title: "LLM", body: `${status} · ${label} · ${formatCost(llm.usage.costUsd)}` });
   }
 
   const db = input.db;
   sections.push({
     title: "Запись в БД",
     body: db.ok
-      ? [
-          "Статус: выполнена",
-          `ID записи: ${db.record.id}`,
-          `Записано: ${formatDateTime(new Date(db.record.createdAt).getTime())}`,
-          `Символов записано: ${input.combinedText.length}`,
-        ].join("\n")
-      : ["Статус: не выполнена", `Причина: ${db.error}`].join("\n"),
+      ? `Выполнена · <code>${escapeHtml(db.record.id)}</code>`
+      : `Не выполнена${db.error ? ` · ${escapeHtml(db.error)}` : ""}`,
   });
 
   return sections;
@@ -203,16 +117,19 @@ export function buildReport(input: ReportInput): ReportSection[] {
 
 const MAX_MESSAGE_LENGTH = 4096;
 
-/** Склейка секций в сообщения ≤ 4096 символов. */
+/**
+ * Склейка секций в сообщения ≤ 4096 символов. Секции самодостаточны (HTML-теги
+ * не разрываются между сообщениями), поэтому режем только по границам секций.
+ */
 export function renderReport(sections: ReportSection[]): string[] {
+  const blocks = sections.map((s) => (s.title ? `<b>${s.title}</b>\n${s.body}` : s.body));
   const out: string[] = [];
   let current = "";
 
-  for (const section of sections) {
-    const block = (section.title ? `${section.title}\n` : "") + section.body;
+  for (const block of blocks) {
     const candidate = current ? `${current}\n\n${block}` : block;
-    if (candidate.length > MAX_MESSAGE_LENGTH) {
-      if (current) out.push(current);
+    if (candidate.length > MAX_MESSAGE_LENGTH && current) {
+      out.push(current);
       current = block;
     } else {
       current = candidate;

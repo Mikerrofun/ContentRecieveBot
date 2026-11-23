@@ -34,8 +34,10 @@ const envSchema = z.object({
   OPENROUTER_API_KEY: z.string().default(""),
   LLM_VALIDATION: z.enum(["off", "on"]).default("on"),
   LLM_CHUNK_MAX_TOKENS: z.coerce.number().int().positive().default(2500),
+  /** Бюджет ответа на чанк: reasoning + сам ответ, с запасом (чтобы не обрезать). */
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(6000),
   LLM_CONCURRENCY: z.coerce.number().int().positive().default(4),
-  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(50000),
 });
 
 export type Env = z.infer<typeof envSchema>;

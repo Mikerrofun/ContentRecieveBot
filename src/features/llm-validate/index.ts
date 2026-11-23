@@ -8,6 +8,7 @@ import {
   FALLBACK_MODEL,
   GLOBAL_ERROR_STATUSES,
   LLM_CONTEXT_CHARS,
+  LLM_REASONING,
   PRIMARY_ATTEMPTS,
   PRIMARY_BACKOFF_MS,
   PRIMARY_MODEL,
@@ -33,6 +34,8 @@ export interface ChunkResult {
   text: string;
   model?: string;
   usage?: TokenUsage;
+  /** Реально потраченная стоимость (сумма по всем попыткам, включая упавшие). */
+  costUsd?: number;
 }
 
 export interface LlmUsageSummary {
@@ -82,17 +85,33 @@ function summarizeUsage(results: ChunkResult[]): LlmUsageSummary {
   let outputTokens = 0;
   let costUsd = 0;
   for (const r of results) {
-    if (!r.usage) continue;
-    inputTokens += r.usage.input;
-    outputTokens += r.usage.output;
-    const price = PRICE_PER_1M[r.model ?? PRIMARY_MODEL] ?? { input: 0, output: 0 };
-    costUsd += (r.usage.input / 1_000_000) * price.input + (r.usage.output / 1_000_000) * price.output;
+    if (r.usage) {
+      inputTokens += r.usage.input;
+      outputTokens += r.usage.output;
+    }
+    costUsd += r.costUsd ?? 0;
   }
   return { inputTokens, outputTokens, costUsd };
 }
 
-async function processChunk(chunk: LlmChunk, maxTokens: number, timeoutMs: number): Promise<ChunkResult> {
+function priceOf(model: string): { input: number; output: number } {
+  return PRICE_PER_1M[model] ?? { input: 0, output: 0 };
+}
+
+async function processChunk(chunk: LlmChunk, outputTokens: number, timeoutMs: number): Promise<ChunkResult> {
   const user = buildUserMessage(chunk);
+
+  // Аккумулятор токенов/стоимости по ВСЕМ попыткам (включая пустые ответы и фолбэк):
+  // callChatCompletion дёргает onUsage даже когда бросает «пустой ответ модели».
+  const usage: TokenUsage = { input: 0, output: 0 };
+  let costUsd = 0;
+  const record = (model: string, u: TokenUsage): void => {
+    usage.input += u.input;
+    usage.output += u.output;
+    const p = priceOf(model);
+    costUsd += (u.input / 1_000_000) * p.input + (u.output / 1_000_000) * p.output;
+  };
+  const snapshot = (): TokenUsage => ({ input: usage.input, output: usage.output });
 
   try {
     const res = await withRetry(
@@ -101,7 +120,9 @@ async function processChunk(chunk: LlmChunk, maxTokens: number, timeoutMs: numbe
           model: PRIMARY_MODEL,
           system: LLM_SYSTEM_PROMPT,
           user,
-          maxTokens,
+          maxTokens: outputTokens,
+          reasoning: LLM_REASONING,
+          onUsage: record,
           signal,
         }),
       {
@@ -111,7 +132,7 @@ async function processChunk(chunk: LlmChunk, maxTokens: number, timeoutMs: numbe
       }
     );
 
-    return { index: chunk.index, status: "ok-primary", text: res.text, model: PRIMARY_MODEL, usage: res.usage };
+    return { index: chunk.index, status: "ok-primary", text: res.text, model: PRIMARY_MODEL, usage: snapshot(), costUsd };
   } catch (e) {
     if (isGlobalError(e)) throw e;
     logger.warn("llm primary failed", { index: chunk.index, error: errorText(e) });
@@ -122,15 +143,17 @@ async function processChunk(chunk: LlmChunk, maxTokens: number, timeoutMs: numbe
       model: FALLBACK_MODEL,
       system: LLM_SYSTEM_PROMPT,
       user,
-      maxTokens,
+      maxTokens: outputTokens,
+      reasoning: LLM_REASONING,
+      onUsage: record,
       signal: AbortSignal.timeout(timeoutMs),
     });
 
-    return { index: chunk.index, status: "ok-fallback", text: res.text, model: FALLBACK_MODEL, usage: res.usage };
+    return { index: chunk.index, status: "ok-fallback", text: res.text, model: FALLBACK_MODEL, usage: snapshot(), costUsd };
   } catch (e) {
     if (isGlobalError(e)) throw e;
     logger.warn("llm fallback failed", { index: chunk.index, error: errorText(e) });
-    return { index: chunk.index, status: "reverted", text: chunk.text };
+    return { index: chunk.index, status: "reverted", text: chunk.text, model: PRIMARY_MODEL, usage: snapshot(), costUsd };
   }
 }
 
@@ -158,11 +181,12 @@ export function llmFailedResult(text: string, error: string): LlmValidateResult 
  */
 export async function llmValidate(text: string): Promise<LlmValidateResult> {
   const env = getEnv();
-  const maxTokens = env.LLM_CHUNK_MAX_TOKENS;
+  const chunkTokens = env.LLM_CHUNK_MAX_TOKENS;
+  const outputTokens = env.LLM_MAX_OUTPUT_TOKENS;
   const concurrency = env.LLM_CONCURRENCY;
   const timeoutMs = env.LLM_TIMEOUT_MS;
 
-  const chunks = buildChunks(text, maxTokens);
+  const chunks = buildChunks(text, chunkTokens);
   const queue = new PQueue({ concurrency });
   const results: Array<ChunkResult | undefined> = new Array(chunks.length);
   const globalErrors: RetryableError[] = [];
@@ -171,7 +195,7 @@ export async function llmValidate(text: string): Promise<LlmValidateResult> {
     queue.add(async () => {
       if (globalErrors.length > 0) return;
       try {
-        results[chunk.index] = await processChunk(chunk, maxTokens, timeoutMs);
+        results[chunk.index] = await processChunk(chunk, outputTokens, timeoutMs);
       } catch (e) {
         if (isGlobalError(e)) {
           globalErrors.push(e);

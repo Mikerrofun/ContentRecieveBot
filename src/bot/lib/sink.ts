@@ -3,13 +3,15 @@ import { InputFile } from "grammy";
 import type { OutputSink, SinkInput } from "@/features/sink";
 
 /**
- * Отчёт отправляется БЕЗ parse_mode: в него попадают примеры из текста
- * пользователя (нарушения валидатора), и Markdown-разметка в них сломала бы
- * отправку (незакрытые `*`/`_`/бэктики → ошибка Telegram API).
+ * Отчёт отправляется с parse_mode HTML: секция «Валидация» с примерами из
+ * текста пользователя убрана, поэтому динамических фрагментов из исходника в
+ * отчёте нет (только сухие счётчики, число, UUID и статичные предупреждения),
+ * и разметка не ломает отправку. На всякий случай динамика экранируется в
+ * buildReport.
  */
 async function sendReport(bot: Bot, chatId: number, report: string[]): Promise<void> {
   for (const message of report) {
-    await bot.api.sendMessage(chatId, message);
+    await bot.api.sendMessage(chatId, message, { parse_mode: "HTML" });
   }
 }
 
