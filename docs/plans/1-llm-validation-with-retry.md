@@ -24,8 +24,12 @@
 
 **Фичи (features) — сюда встраиваемся**
 - `src/features/transcribe/index.ts` — локальный ретрай с `onAttemptFail` и своим
-  backoff `[1000,2000,4000]`. **Не трогаем.** Нужен только как образец «как не
-  надо» — у нас будет общий `withRetry` с фиксированным backoff.
+  backoff `[1000,2000,4000]`. **Рефакторим на общий `withRetry`** (см. §4.5):
+  свой цикл повторов убираем, поведение (3 попытки, пауза перед повтором, хук
+  «Повторяю…») сохраняем. Это образец «как было» → «как стало».
+- `src/features/intake/index.ts` — вызывает `transcribeAudio` (точка whisper-запроса);
+  `src/bot/messages.ts` — `transcriptionRetry()` («Повторяю…»), задействуем через
+  хук `onAttemptFail`.
 - `src/features/transcribe/openai-compatible.ts` — образец вызова внешнего API
   через `fetch` (обработка `!response.ok`, парсинг JSON). Наш `openrouter.ts`
   повторяет этот стиль.
@@ -79,6 +83,10 @@
    на замоканном `fetch` (без сети и без реального ключа).
 6. **Минимальные тесты в конце.** Один check-скрипт на несколько ключевых
    сценариев, без перегруза. Не разрастается в тест-фреймворк.
+7. **Единый ретрай.** Любой ad-hoc цикл повторов заменяем на общий `withRetry`
+   (`shared/lib/net`). Локальные `MAX_ATTEMPTS`/`BACKOFF_MS`/`isRetryable`
+   переезжают в `*.config.ts` и в классификатор ошибок, а не живут в логике.
+   Единственный существующий такой паттерн — `features/transcribe` (см. §4.5).
 
 ---
 
@@ -135,16 +143,20 @@ chunks[0..N-1]  (с read-only контекстом соседей)
 Конкретные типы/константы живут в `*.types.ts` / `*.config.ts` (см. раздел 1).
 
 ### 4.1 Общий слой ретрая — `src/shared/lib/net/` (FSD: shared)
-- `with-retry.types.ts` — `WithRetryOptions` (попытки, backoff, внешний
-  `AbortSignal`, таймаут, классификатор ошибок), `RetryableError` (ошибка с
-  полем статуса/признаком «ретраить»).
-- `with-retry.config.ts` — `RETRY_ATTEMPTS = 3`, `RETRY_BACKOFF_MS = 400`.
-- `with-retry.ts` — `withRetry(fn, opts)`: гоняет `fn` до `RETRY_ATTEMPTS`, пауза
-  `RETRY_BACKOFF_MS`; ретраит только то, что классификатор `isRetryableError`
-  (или статус через `isRetryableStatus`) признал временным сбоем; прочие ошибки
-  пробрасывает сразу. Плюс `isRetryableStatus` / `isRetryableError`.
-  Ссылка на стиль: `features/transcribe/index.ts` (но с фиксированным backoff и
-  без `onAttemptFail`), обработка ошибок — как в `openai-compatible.ts`.
+- `with-retry.types.ts` — `WithRetryOptions`: число попыток, backoff
+  (`number | number[]` — фиксированная пауза или пауза по попыткам), внешний
+  `AbortSignal`, таймаут на попытку, предикат `shouldRetry(error)` (по умолчанию
+  `isRetryableError`) и хук `onAttemptFail(attempt)` (для сообщения «Повторяю…»).
+  Плюс `RetryableError` (ошибка со статусом/признаком «ретраить»).
+- `with-retry.config.ts` — дефолты слой: `RETRY_ATTEMPTS = 3`,
+  `RETRY_BACKOFF_MS = 400`.
+- `with-retry.ts` — `withRetry(fn, opts)`: гоняет `fn` до числа попыток, пауза
+  по backoff; ретраит только то, что `shouldRetry` (или `isRetryableStatus` по
+  статусу) признал временным сбоем, прочие ошибки пробрасывает сразу; перед
+  повтором зовёт `onAttemptFail`. Плюс `isRetryableStatus` / `isRetryableError`.
+  Универсален: обслуживает и LLM-чанки (400 мс), и whisper (см. §4.5, свой
+  backoff `[1000,2000,4000]` через `number[]`). Стиль ошибок — как в
+  `openai-compatible.ts`.
 - `index.ts` — бочка (реэкспорт публичного API слоя).
 
 ### 4.2 Клиент — `src/shared/api/openrouter.ts` (FSD: shared/api)
@@ -207,7 +219,28 @@ chunks[0..N-1]  (с read-only контекстом соседей)
   состояние — отдельное подтверждение у пользователя.
 - `supabase/schema.sql` — синхронизировать с миграциями.
 
-### 4.5 Документация
+### 4.5 Рефакторинг `features/transcribe` на `withRetry` (whisper)
+Паттерн «свой цикл повторов» — неверный: убираем его и переиспользуем общий
+`withRetry` из §4.1. Поведение whisper сохраняем один в один.
+
+- `features/transcribe/config.ts` (новый) — `TRANSCRIBE_RETRY_ATTEMPTS = 3`,
+  `TRANSCRIBE_RETRY_BACKOFF_MS = [1000, 2000, 4000]`. Типы и константы — по §1.
+- `features/transcribe/types.ts` — при необходимости типы для опций ретрая
+  (хук `onAttemptFail`, вход `transcribeAudio`).
+- `features/transcribe/index.ts` — внутри `transcribeAudio` оборачиваем вызов
+  провайдера в `withRetry(...)`: передаём `attempts`/`backoff` из `config.ts`,
+  `shouldRetry` = классификатор «ретраить только сетевые и 429/5xx» (логика
+  текущего `isRetryable` по `TranscriptionError.userMessage`), `onAttemptFail` =
+  вызов переданного хука. Свой `sleep`, `MAX_ATTEMPTS`, `BACKOFF_MS` и ручной
+  цикл удаляем. Классификатор — отдельная функция (не типы), можно рядом.
+- `features/intake/index.ts` / `bot/lib/finalize-flow.ts` — точка вызова не
+  меняется по контракту; при желании прокидываем `onAttemptFail` для сообщения
+  «Повторяю…» (`messages.transcriptionRetry()`), но это опционально и не ломает
+  текущее поведение (сейчас хук не передаётся).
+- Проверка: `npx tsc --noEmit`; отдельный тест не добавляем (минимальные тесты,
+  §1.6) — достаточно общего `check:llm` и существующего потока бота.
+
+### 4.6 Документация
 - Новый `docs/llm-validation.md` — по шаблону «заметки о точечной фиче»
   (см. 6).
 - Правки: `docs/cleanup-and-validation.md` (раздел 9 — ограничения: убрать
@@ -243,12 +276,14 @@ LLM-прогон
    моделью.
 2. **Где/что уже было** — переиспользуем `p-queue`, `isProtectedToken`,
    `autofix`/`validate`, паттерн `onStarted`/«Обрабатываю…», `buildReport`/
-   `renderReport`, `saveMaterial`. Отметить: локальный ретрай в `transcribe` не
-   трогали; `autofix` после LLM не переписывали.
+   `renderReport`, `saveMaterial`. Отметить: локальный ретрай в `transcribe`
+   переведён на общий `withRetry` (поведение сохранено); `autofix` после LLM не
+   переписывали.
 3. **Реализация** — по каждому модулю (`withRetry`, `callChatCompletion`,
    `splitIntoChunks`/`estimateTokens`, `processChunk`, `llmValidate`, `guards`,
    место вызова в `runFinalization`): для чего, вход, выход. Отдельно — что не
-   тронуто (`core/cleanup`, `core/validate`, `transcribe`).
+   тронуто (`core/cleanup`, `core/validate`) и что отрефакторено (`transcribe`
+   → `withRetry`).
 4. **UI** — секция «LLM-прогон» и удаление «Обрабатываю…» после завершения.
 5. **Поток данных** — ASCII-цепочка через `↓` с аргументами и результатами.
 6. **Почему так** — чанки (качество/лимит `max_tokens`); параллель через
@@ -283,16 +318,19 @@ LLM-прогон
 
 ## 8. Порядок работ в Act mode
 
-1. `shared/lib/net` → `shared/api/openrouter.ts` → `features/llm-validate`
+1. `shared/lib/net` (`withRetry` + `*.types.ts` / `*.config.ts`).
+2. Рефакторинг `features/transcribe` на `withRetry` (§4.5) + `tsc --noEmit`
+   (проверяем, что whisper-ретрай жив).
+3. `shared/api/openrouter.ts` → `features/llm-validate`
    (типы и константы — сразу по `*.types.ts` / `*.config.ts`).
-2. `check-llm-validate.ts` на замоканном `fetch`, прогон `check:llm`, затем
+4. `check-llm-validate.ts` на замоканном `fetch`, прогон `check:llm`, затем
    `tsc --noEmit`.
-3. Интеграция: `env.ts` + `.env.example`, `features/finalize`, `features/report`,
+5. Интеграция: `env.ts` + `.env.example`, `features/finalize`, `features/report`,
    `entities/material`, `bot/lib/finalize-flow`. Удалить `optionalLlmPass`,
    `CLEANUP_LLM`, `LlmNotImplementedError`.
-4. Миграция: сначала проверка фактической схемы (`supabase db query --remote`),
+6. Миграция: сначала проверка фактической схемы (`supabase db query --remote`),
    затем `supabase db push --remote`. Применение к удалённой БД — только после
    отдельного подтверждения пользователя.
-5. `npm run build`.
-6. Живой запрос к модели — **на машине пользователя** (не в Act mode).
-7. Заметка `docs/llm-validation.md` и правки остальных документов.
+7. `npm run build`.
+8. Живой запрос к модели — **на машине пользователя** (не в Act mode).
+9. Заметка `docs/llm-validation.md` и правки остальных документов.
