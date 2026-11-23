@@ -101,7 +101,7 @@ export function buildReport(input: ReportInput): ReportSection[] {
       ? llm.fallbackModel
       : llm.primaryModel;
     const label = modelId.split("/")[0];
-    sections.push({ title: "LLM", body: `${status} · ${label} · ${formatCost(llm.usage.costUsd)}` });
+    sections.push({ title: "LLM", body: `${status} · ${label} · ${formatCost(llm.usage.costUsd)}\nВыполнен · Whisper-v3-large · free` });
   }
 
   const db = input.db;

@@ -26,3 +26,22 @@ comment on table public.materials is
 -- RLS без политик: anon/authenticated не видят таблицу вовсе,
 -- запись идёт только service key (он RLS обходит).
 alter table public.materials enable row level security;
+
+-- Пользователи бота: запись при первом /start и профиль.
+create table if not exists public.users (
+  id uuid primary key default gen_random_uuid(),
+  telegram_id bigint not null unique,
+  username text,
+  first_name text,
+  last_name text,
+  language_code text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+
+create index if not exists idx_users_telegram_id on public.users(telegram_id);
+
+comment on table public.users is
+  'Пользователи бота (первый /start и профиль)';
+
+alter table public.users enable row level security;

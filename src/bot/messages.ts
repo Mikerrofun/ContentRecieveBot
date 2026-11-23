@@ -11,6 +11,24 @@ export function formatDuration(sec: number): string {
   return m > 0 ? `${m} мин ${s} с` : `${s} с`;
 }
 
+export type StageIconStatus = "running" | "done" | "failed";
+
+export interface StageProgress {
+  label: string;
+  status: StageIconStatus;
+}
+
+/** Прогресс по этапам обработки для сообщения «Обрабатываю…». */
+export function renderStages(stages: StageProgress[]): string {
+  const icon: Record<StageIconStatus, string> = {
+    running: "⟨…⟩",
+    done: "✓",
+    failed: "✗",
+  };
+  const lines = stages.map((s, i) => `${i + 1}. ${s.label} — ${icon[s.status]}`);
+  return ["Обрабатываю…", "", ...lines].join("\n");
+}
+
 export const messages = {
   help: () =>
     [

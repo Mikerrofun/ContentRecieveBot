@@ -2,10 +2,30 @@ import type { Bot } from "grammy";
 import { messages } from "@/bot/messages";
 import { cancelConfirmKeyboard } from "@/bot/keyboards";
 import { clearSession, createSession, findActiveSession } from "@/entities/session";
+import { saveUser } from "@/entities/user";
 import { enqueueFinalize } from "@/bot/lib/finalize-flow";
+import { logger } from "@/shared/lib/logger";
 
 export function registerCommands(bot: Bot): void {
-  bot.command(["start", "help"], (ctx) => ctx.reply(messages.help()));
+  bot.command("start", async (ctx) => {
+    // Записываем пользователя при первом /start (повторные обновляют профиль).
+    // Ответ не блокируем — saveUser сам гасит ошибки БД.
+    const u = ctx.from;
+    if (u) {
+      void saveUser({
+        telegramId: u.id,
+        username: u.username,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        languageCode: u.language_code,
+      }).then((res) => {
+        if (!res.ok) logger.warn("save user failed", { error: res.error });
+      });
+    }
+    await ctx.reply(messages.help());
+  });
+
+  bot.command("help", (ctx) => ctx.reply(messages.help()));
 
   bot.command(["StartProcess", "startprocess"], (ctx) => {
     const session = findActiveSession(ctx.chat.id);
