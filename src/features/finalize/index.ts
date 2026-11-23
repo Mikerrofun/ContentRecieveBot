@@ -11,6 +11,7 @@ import {
   type FinalizeItemResult,
 } from "@/features/report";
 import type { OutputSink } from "@/features/sink";
+import { buildTranscriptFile } from "@/features/transcript-file";
 import { saveMaterial } from "@/entities/material";
 import { LlmNotImplementedError } from "@/shared/lib/errors";
 import { logger } from "@/shared/lib/logger";
@@ -128,7 +129,11 @@ export async function runFinalization(
       db,
     });
 
-    await sink.deliver({ chatId, report: renderReport(sections) });
+    // Файл с транскриптом отправляется всегда, даже при сбое БД:
+    // юзер должен получить текст независимо от статуса записи.
+    const transcriptFile = buildTranscriptFile(combined, session.createdAt);
+
+    await sink.deliver({ chatId, report: renderReport(sections), transcriptFile });
 
     if (!db.ok) {
       // Сессия сохранена — юзер может повторить /done без потери материала.

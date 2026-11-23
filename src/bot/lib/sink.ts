@@ -1,4 +1,5 @@
 import type { Bot } from "grammy";
+import { InputFile } from "grammy";
 import type { OutputSink, SinkInput } from "@/features/sink";
 
 /**
@@ -12,11 +13,28 @@ async function sendReport(bot: Bot, chatId: number, report: string[]): Promise<v
   }
 }
 
-/** Отдаёт только отчёт: файл с текстом больше не отправляется, текст живёт в БД. */
+/** Транскрипт дублируется в чат файлом (.txt), помимо записи в БД. */
+async function sendTranscriptFile(
+  bot: Bot,
+  chatId: number,
+  filename: string,
+  content: string
+): Promise<void> {
+  const file = new InputFile(Buffer.from(content, "utf-8"), filename);
+  await bot.api.sendDocument(chatId, file);
+}
+
+/** Отдаёт отчёт, затем файл с транскриптом. */
 export function createSink(bot: Bot): OutputSink {
   return {
     async deliver(input: SinkInput): Promise<void> {
       await sendReport(bot, input.chatId, input.report);
+      await sendTranscriptFile(
+        bot,
+        input.chatId,
+        input.transcriptFile.filename,
+        input.transcriptFile.content
+      );
     },
   };
 }
